@@ -32,7 +32,7 @@ while true; do
     # Check if any file in dist is newer than our reference file
     if [ -n "$(find dist -type f -newer .last_build -print -quit)" ]; then
         echo -e "${GREEN}🔄 Change detected in dist, restarting n8n...${NC}"
-        docker compose restart n8n
+        docker compose -f docker-compose.dev.yml restart n8n
         touch .last_build
     fi
     sleep 2
