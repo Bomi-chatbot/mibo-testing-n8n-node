@@ -1,0 +1,17 @@
+node_modules
+.git
+.last_build
+nodes
+credentials
+scripts
+.env
+.env.*
+.DS_Store
+*.log
+coverage
+.nyc_output
+.github
+eslint.config.mjs
+tsconfig.json
+README.md
+LICENSE

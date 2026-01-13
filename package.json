@@ -1,0 +1,58 @@
+{
+  "name": "n8n-nodes-mibo-testing",
+  "version": "0.1.0",
+  "description": "n8n community node for Mibo Testing - Capture and send workflow traces for semantic and procedural testing",
+  "license": "GPL-3.0-or-later",
+  "homepage": "https://github.com/mibo-testing/n8n-nodes-mibo-testing",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "workflow",
+    "testing",
+    "trace",
+    "mibo"
+  ],
+  "author": {
+    "name": "Mibo Testing",
+    "email": "support@mibo-testing.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mibo-testing/n8n-nodes-mibo-testing.git"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc && npm run copy:icons",
+    "copy:icons": "node scripts/copy-icons.mjs",
+    "dev": "tsc --watch",
+    "lint": "eslint nodes credentials",
+    "lint:fix": "eslint nodes credentials --fix",
+    "prepublishOnly": "npm run build",
+    "start:dev": "./scripts/dev.sh"
+  },
+  "files": [
+    "dist"
+  ],
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/MiboTestingApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/MiboTesting/MiboTesting.node.js"
+    ]
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.0.0",
+    "@types/node": "^22.0.0",
+    "eslint": "^9.0.0",
+    "n8n-workflow": "*",
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.0.0"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  }
+}

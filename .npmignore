@@ -1,0 +1,15 @@
+node_modules/
+*.log
+.DS_Store
+.git/
+.github/
+eslint.config.mjs
+tsconfig.json
+gulpfile.js
+Dockerfile
+docker-compose.yml
+docker-compose.dev.yml
+scripts/
+nodes/
+credentials/
+.last_build
