@@ -26,7 +26,7 @@ export class MiboTestingApi implements ICredentialType {
 			displayName: 'Server URL',
 			name: 'serverUrl',
 			type: 'string',
-			default: 'https://api.mibo-testing.com',
+			default: 'https://api.mibo-ai.com',
 			description: 'The Mibo Testing server URL. Only change this if you are using a self-hosted instance.',
 		},
 	];
