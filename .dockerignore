@@ -1,9 +1,7 @@
 node_modules
 .git
 .last_build
-nodes
-credentials
-scripts
+scripts/dev.sh
 .env
 .env.*
 .DS_Store
@@ -12,6 +10,5 @@ coverage
 .nyc_output
 .github
 eslint.config.mjs
-tsconfig.json
 README.md
 LICENSE
