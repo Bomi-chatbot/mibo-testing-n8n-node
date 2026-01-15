@@ -250,14 +250,23 @@ export class MiboTesting implements INodeType {
 
 		const serverUrl = (options.serverUrl as string) || (credentials.serverUrl as string) || 'https://api.mibo-ai.com';
 		const timeout = ((options.timeout as number) || 30) * 1000;
+		const requestHeaders: IDataObject = {
+			'x-api-key': credentials.apiKey as string,
+			'Content-Type': 'application/json',
+		};
+
+		const firstItem = items[0]?.json as IDataObject;
+		const incomingHeaders = firstItem?.headers as IDataObject | undefined;
+		const requestId = (incomingHeaders?.['x-request-id'] || incomingHeaders?.['X-Request-Id'] || firstItem?.['x-request-id'] || firstItem?.['X-Request-Id']) as string | undefined;
+		if (requestId) {
+			requestHeaders['X-Request-Id'] = requestId;
+		}
+
 		try {
 			const response = await this.helpers.httpRequest({
 				method: 'POST' as IHttpRequestMethods,
 				url: `${serverUrl}/traces`,
-				headers: {
-					'x-api-key': credentials.apiKey as string,
-					'Content-Type': 'application/json',
-				},
+				headers: requestHeaders,
 				body: tracePayload,
 				timeout,
 			});
