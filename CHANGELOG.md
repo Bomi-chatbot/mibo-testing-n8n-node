@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.1] - 2026-03-16
+
+### Added
+
+- Node `parameters` field in optimized trace payload (auto-detect mode) — enables asserting on
+  httpRequest node configuration (e.g. `url`, `method`) via `expected_arguments` in Mibo Testing
+
 ## [0.2.0] - 2026-03-08
 
 ### Added

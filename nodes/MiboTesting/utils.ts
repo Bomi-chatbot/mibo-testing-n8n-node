@@ -1,7 +1,7 @@
 import type { IDataObject, IExecuteFunctions } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
-
 import { UUID_REGEX } from './constants';
+import type { WorkflowNode } from './types';
 
 export function isValidUUID(value: string): boolean {
   return UUID_REGEX.test(value);
@@ -34,7 +34,7 @@ export async function fetchWorkflowNodes(
   n8nBaseUrl: string,
   n8nApiKey: string,
   workflowId: string,
-): Promise<Array<{ name: string; type: string }>> {
+): Promise<WorkflowNode[]> {
   const baseUrl = normalizeServerUrl(n8nBaseUrl);
 
   try {
@@ -55,8 +55,9 @@ export async function fetchWorkflowNodes(
       });
     }
 
-    return nodes.map((n: { name: string; type: string }) => ({
+    return nodes.map((n: WorkflowNode) => ({
       name: n.name,
+      parameters: n.parameters || {},
       type: n.type,
     }));
   } catch (error) {

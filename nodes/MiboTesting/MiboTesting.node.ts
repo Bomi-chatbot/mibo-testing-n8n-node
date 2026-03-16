@@ -15,7 +15,7 @@ import {
   parseErrorResponse,
   sendTrace,
 } from './mibo-client';
-import type { NodeDataInput, NodeOptions } from './types';
+import type { NodeDataInput, NodeOptions, WorkflowNode } from './types';
 import {
   fetchWorkflowNodes,
   findRequestIdInData,
@@ -224,18 +224,19 @@ export class MiboTesting implements INodeType {
     const useGetWorkflow = this.getNodeParameter('useGetWorkflow', 0, false) as boolean;
     let targetNodes: string[] = [];
     const nodeTypeMap: Record<string, string> = {};
-    let fetchedNodes: Array<{ name: string; type: string }> | undefined;
+    const nodeParamsMap: Record<string, IDataObject> = {};
+    let fetchedNodes: WorkflowNode[] | undefined;
 
     if (useGetWorkflow) {
       const nodeFilterPreset = this.getNodeParameter('nodeFilterPreset', 0, 'all') as string;
       const n8nApiKey = (credentials.n8nApiKey as string) || '';
       const n8nBaseUrl = resolveN8nBaseUrl((credentials.n8nBaseUrl as string) || '');
-      let inputNodes: Array<{ name: string; type: string }>;
+      let inputNodes: WorkflowNode[];
       if (n8nApiKey) {
         inputNodes = await fetchWorkflowNodes(this, n8nBaseUrl, n8nApiKey, workflowId);
         fetchedNodes = inputNodes;
       } else {
-        const rawNodes = items[0]?.json?.nodes as Array<{ name: string; type: string }> | undefined;
+        const rawNodes = items[0]?.json?.nodes as WorkflowNode[] | undefined;
         if (!rawNodes || !Array.isArray(rawNodes)) {
           throw new NodeOperationError(this.getNode(), 'No workflow nodes found', {
             description:
@@ -251,6 +252,7 @@ export class MiboTesting implements INodeType {
         }
 
         nodeTypeMap[n.name] = n.type || 'unknown';
+        nodeParamsMap[n.name] = n.parameters || {};
         return true;
       });
 
@@ -342,9 +344,7 @@ export class MiboTesting implements INodeType {
     }
 
     if (!requestId && useGetWorkflow) {
-      const allNodes =
-        fetchedNodes ||
-        (items[0]?.json?.nodes as Array<{ name: string; type: string }> | undefined);
+      const allNodes = fetchedNodes || (items[0]?.json?.nodes as WorkflowNode[] | undefined);
       if (allNodes) {
         const webhookNodes = allNodes.filter((n) => {
           const nodeType = n.type?.split('.').pop()?.toLowerCase() || '';
@@ -395,10 +395,12 @@ export class MiboTesting implements INodeType {
               requestId = findRequestIdInData(itemJson);
             }
           }
+          const nodeParams = nodeParamsMap[nodeName];
           nodesData.push({
             nodeName,
             items: nodeItemsData,
             type: nodeType,
+            parameters: nodeParams && Object.keys(nodeParams).length > 0 ? nodeParams : undefined,
           });
         } else {
           nodesNotExecuted.push(nodeName);
@@ -412,10 +414,12 @@ export class MiboTesting implements INodeType {
       } catch {
         try {
           const nodeJson = nodeProxy.json as IDataObject;
+          const nodeParams = nodeParamsMap[nodeName];
           nodesData.push({
             nodeName,
             items: [nodeJson],
             type: nodeType,
+            parameters: nodeParams && Object.keys(nodeParams).length > 0 ? nodeParams : undefined,
           });
 
           if (!requestId) {

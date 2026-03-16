@@ -167,4 +167,33 @@ describe('buildOptimizedTracePayload', () => {
     const result = buildOptimizedTracePayload(nodes, 'wf-1', 'Flow', '2025-01-01T00:00:00.000Z');
     expect(result.data['Node1'].type).toBe('unknown');
   });
+
+  it('includes parameters when non-empty', () => {
+    const nodes = [
+      {
+        nodeName: 'Scrape Website',
+        items: [{ data: '<html>' }],
+        type: 'n8n-nodes-base.httpRequest',
+        parameters: { url: '={{ $json.targetUrl }}', method: 'GET', options: {} },
+      },
+    ];
+    const result = buildOptimizedTracePayload(nodes, 'wf-1', 'Flow', '2025-01-01T00:00:00.000Z');
+    expect(result.data['Scrape Website'].parameters).toEqual({
+      url: '={{ $json.targetUrl }}',
+      method: 'GET',
+      options: {},
+    });
+  });
+
+  it('omits parameters when undefined', () => {
+    const nodes = [{ nodeName: 'Node1', items: [{ v: 1 }], type: 'test' }];
+    const result = buildOptimizedTracePayload(nodes, 'wf-1', 'Flow', '2025-01-01T00:00:00.000Z');
+    expect(result.data['Node1'].parameters).toBeUndefined();
+  });
+
+  it('omits parameters when empty object', () => {
+    const nodes = [{ nodeName: 'Node1', items: [{ v: 1 }], type: 'test', parameters: {} }];
+    const result = buildOptimizedTracePayload(nodes, 'wf-1', 'Flow', '2025-01-01T00:00:00.000Z');
+    expect(result.data['Node1'].parameters).toBeUndefined();
+  });
 });

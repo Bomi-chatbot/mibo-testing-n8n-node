@@ -1,6 +1,6 @@
 {
   "name": "@mibo-ai/n8n-nodes-mibo-testing",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "n8n community node for Mibo Testing - Capture and send workflow traces for semantic and procedural testing",
   "license": "GPL-3.0-or-later",
   "homepage": "https://github.com/mibo-ai/mibo-testing-n8n-node",

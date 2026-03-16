@@ -110,11 +110,15 @@ export function buildOptimizedTracePayload(
       };
     } else {
       const output = node.items.length === 1 ? node.items[0] : node.items;
-      data[node.nodeName] = {
+      const nodeEntry: OptimizedNodeData = {
         output,
         type: node.type || 'unknown',
         status: 'success',
       };
+      if (node.parameters && Object.keys(node.parameters).length > 0) {
+        nodeEntry.parameters = node.parameters;
+      }
+      data[node.nodeName] = nodeEntry;
     }
   }
 
