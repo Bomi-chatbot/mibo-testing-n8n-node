@@ -10,6 +10,8 @@ n8n community node for **Mibo Testing** - a platform for semantic and procedural
 - **Request-id correlation**: sets `x-request-id` from the manual override, then from incoming webhook headers, falling back to the n8n execution id.
 - **Passthrough**: input items pass through unchanged; only a `_miboTrace` summary is appended.
 
+> New here? Start with the [Quick Start Guide](./docs/quick-start.md) — 30-second setup plus troubleshooting for the most common errors (payload too large, wrong node names, API key issues).
+
 ## Installation
 
 ### Community Nodes (Recommended)
