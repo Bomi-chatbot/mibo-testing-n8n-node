@@ -1,8 +1,11 @@
 name: Publish to npm
 
 on:
-  release:
-    types: [published]
+  # Called from release-please.yml after a Release PR is merged.
+  workflow_call:
+  # Manual escape hatch for re-publishing the current main, e.g. if a
+  # publish job failed transiently. Use sparingly — the canonical path
+  # is via release-please.
   workflow_dispatch:
 
 jobs:
