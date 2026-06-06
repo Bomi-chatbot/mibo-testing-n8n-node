@@ -32,7 +32,7 @@ Credential type: **Mibo Testing API**.
 |-------|----------|-------------|
 | **API Key** | Yes | Your Mibo Testing API key. Find it in the Mibo dashboard under **Settings → API Keys**. |
 | **n8n API Key** | No | n8n API key with the `workflow:read` scope. Enables automatic node discovery via the n8n REST API — works on both n8n Cloud and self-hosted. Create one in n8n: **Settings → API → Create an API Key**. |
-| **n8n Base URL** | No | URL of your n8n instance. Defaults to `http://localhost:5678/api/v1`, which works for most setups since the node runs inside n8n itself. Change only for n8n Cloud or custom deployments. |
+| **n8n API URL** | No | URL of your n8n instance's REST API. Defaults to `http://localhost:5678/api/v1`, which works for most setups since the node runs inside n8n itself. Change only for n8n Cloud or custom deployments. |
 
 API keys are stored as password fields and never logged.
 
