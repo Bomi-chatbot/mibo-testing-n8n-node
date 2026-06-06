@@ -18,7 +18,7 @@ importers:
         specifier: ^4.0.0
         version: 4.0.3
       n8n-workflow:
-        specifier: '*'
+        specifier: ^2.7.0
         version: 2.7.0
       pino:
         specifier: ^9.0.0

@@ -1,10 +1,10 @@
-import type { OptimizedTracePayload, TracePayload } from '../nodes/MiboTesting/types';
 import type { IDataObject, IExecuteFunctions, INode, INodeExecutionData } from 'n8n-workflow';
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { NodeOperationError } from 'n8n-workflow';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MiboTesting } from '../nodes/MiboTesting/MiboTesting.node';
+import type { CanonicalTracePayload } from '../nodes/MiboTesting/types';
 
 vi.mock('../nodes/MiboTesting/mibo-client', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../nodes/MiboTesting/mibo-client')>();
@@ -19,11 +19,35 @@ const mockSendTrace = vi.mocked(sendTrace);
 
 interface MockOverrides {
   continueOnFail?: boolean;
+  credentials?: Record<string, unknown>;
+  executionId?: string;
   inputItems?: INodeExecutionData[];
   itemsProxy?: Record<string, IDataObject[]>;
-  nodeProxy?: Record<string, { json: IDataObject }>;
   params?: Record<string, unknown>;
+  workflowResponse?: { nodes: unknown[]; connections?: Record<string, unknown> };
 }
+
+const DEFAULT_WORKFLOW_NODES = [
+  { name: 'Webhook', type: 'n8n-nodes-base.webhook', parameters: {} },
+  {
+    name: 'HTTP Request',
+    type: 'n8n-nodes-base.httpRequest',
+    parameters: { url: 'https://example.com', method: 'GET' },
+  },
+  { name: 'AI Agent', type: '@n8n/n8n-nodes-langchain.agent', parameters: {} },
+  { name: 'Sticky Note', type: 'n8n-nodes-base.stickyNote', parameters: {} },
+];
+
+const DEFAULT_CONNECTIONS = {
+  Webhook: { main: [[{ node: 'HTTP Request' }]] },
+  'HTTP Request': { main: [[{ node: 'AI Agent' }]] },
+};
+
+const DEFAULT_ITEMS_PROXY: Record<string, IDataObject[]> = {
+  Webhook: [{ headers: { 'content-type': 'application/json' }, body: 'hi' }],
+  'HTTP Request': [{ response: 'ok' }],
+  'AI Agent': [{ output: 'response text' }],
+};
 
 function createMockExecuteFunctions(overrides: MockOverrides = {}) {
   const inputItems: INodeExecutionData[] = overrides.inputItems || [
@@ -31,39 +55,38 @@ function createMockExecuteFunctions(overrides: MockOverrides = {}) {
   ];
 
   const nodeParams: Record<string, unknown> = {
-    useGetWorkflow: false,
-    targetNodes: 'Webhook, AI Agent',
     requestId: '',
     platformId: '',
     includeMetadata: false,
     metadata: {},
     options: {},
-    nodeFilterPreset: 'all',
-    customTargetNodes: '',
     ...overrides.params,
   };
 
-  const nodeProxy: Record<string, { json: IDataObject }> = overrides.nodeProxy || {
-    Webhook: { json: { headers: { 'content-type': 'application/json' }, body: 'hi' } },
-    'AI Agent': { json: { output: 'response text' } },
+  const itemsProxy: Record<string, IDataObject[]> = overrides.itemsProxy || DEFAULT_ITEMS_PROXY;
+
+  const credentials = overrides.credentials || {
+    apiKey: 'test-api-key',
+    n8nApiKey: 'fake-n8n-key',
+    n8nBaseUrl: 'http://localhost:5678/api/v1',
   };
 
-  const itemsProxy: Record<string, IDataObject[]> = overrides.itemsProxy || {
-    Webhook: [{ headers: { 'content-type': 'application/json' }, body: 'hi' }],
-    'AI Agent': [{ output: 'response text' }],
+  const workflowResponse = overrides.workflowResponse || {
+    nodes: DEFAULT_WORKFLOW_NODES,
+    connections: DEFAULT_CONNECTIONS,
   };
+
+  const httpRequest = vi.fn(async () => workflowResponse);
 
   const mock = {
     getInputData: vi.fn(() => inputItems),
+    getExecutionId: vi.fn(() => overrides.executionId ?? 'exec-1'),
     getNode: vi.fn(() => ({ name: 'Mibo Testing' }) as INode),
     getNodeParameter: vi.fn((name: string) => nodeParams[name]),
-    getCredentials: vi.fn(async () => ({
-      apiKey: 'test-api-key',
-      serverUrl: 'https://api.mibo-ai.com',
-    })),
+    getCredentials: vi.fn(async () => credentials),
     getWorkflow: vi.fn(() => ({ id: 'wf-123', name: 'Test Workflow' })),
     getWorkflowDataProxy: vi.fn(() => ({
-      $node: nodeProxy,
+      $node: {},
       $items: (nodeName: string) => {
         const items = itemsProxy[nodeName];
         if (!items) throw new Error(`Node ${nodeName} not found`);
@@ -72,11 +95,11 @@ function createMockExecuteFunctions(overrides: MockOverrides = {}) {
     })),
     continueOnFail: vi.fn(() => overrides.continueOnFail || false),
     helpers: {
-      httpRequest: vi.fn(),
+      httpRequest,
     },
   };
 
-  return mock as unknown as IExecuteFunctions;
+  return { mock: mock as unknown as IExecuteFunctions, httpRequest };
 }
 
 describe('MiboTesting.execute', () => {
@@ -98,185 +121,132 @@ describe('MiboTesting.execute', () => {
     });
   });
 
-  describe('manual mode', () => {
-    it('sends trace and returns passthrough with _miboTrace', async () => {
-      const mock = createMockExecuteFunctions();
-      const executeResult = await node.execute.call(mock);
+  describe('canonical trace emission', () => {
+    it('emits one span per executed (non-excluded) node with display names and wired parents', async () => {
+      const { mock } = createMockExecuteFunctions();
+      await node.execute.call(mock);
 
-      expect(mockSendTrace).toHaveBeenCalledOnce();
-      expect(executeResult).toHaveLength(1);
-      expect(executeResult[0]).toHaveLength(1);
+      const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
+      expect(payload.spans).toHaveLength(3);
+      const byName = Object.fromEntries(payload.spans.map((s) => [s.name, s]));
+      expect(Object.keys(byName).sort()).toEqual(['AI Agent', 'HTTP Request', 'Webhook']);
+      expect(byName['Sticky Note']).toBeUndefined();
 
-      const output = executeResult[0][0].json;
-      expect(output.message).toBe('hello');
-      expect(output._miboTrace).toBeDefined();
-
-      const trace = output._miboTrace as IDataObject;
-      expect(trace.sent).toBe(true);
-      expect(trace.traceId).toBe('trace-id-123');
+      expect(byName.Webhook.parent_span_id).toBeNull();
+      expect(byName['HTTP Request'].parent_span_id).toBe(byName.Webhook.span_id);
+      expect(byName['AI Agent'].parent_span_id).toBe(byName['HTTP Request'].span_id);
     });
 
-    it('preserves all input items in passthrough', async () => {
-      const mock = createMockExecuteFunctions({
-        inputItems: [
-          { json: { message: 'first' } },
-          { json: { message: 'second' } },
-        ],
+    it('passes input items through unchanged with _miboTrace appended', async () => {
+      const { mock } = createMockExecuteFunctions({
+        inputItems: [{ json: { message: 'first' } }, { json: { message: 'second' } }],
       });
-
       const result = await node.execute.call(mock);
       expect(result[0]).toHaveLength(2);
       expect(result[0][0].json.message).toBe('first');
       expect(result[0][1].json.message).toBe('second');
       expect((result[0][0].json._miboTrace as IDataObject).sent).toBe(true);
-      expect((result[0][1].json._miboTrace as IDataObject).sent).toBe(true);
+    });
+
+    it('marks unreachable nodes as skipped and surfaces them in _miboTrace.nodesNotExecuted', async () => {
+      const { mock } = createMockExecuteFunctions({
+        itemsProxy: { Webhook: [{ body: 'data' }], 'HTTP Request': [{ ok: true }] },
+      });
+      const result = await node.execute.call(mock);
+      const trace = result[0][0].json._miboTrace as IDataObject;
+      expect(trace.nodesNotExecuted).toEqual(['AI Agent']);
+
+      const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
+      const agent = payload.spans.find((s) => s.name === 'AI Agent');
+      expect(agent?.attributes['n8n.node.status']).toBe('skipped');
     });
   });
 
-  describe('get workflow mode', () => {
-    const workflowNodes = [
-      { name: 'Webhook', type: 'n8n-nodes-base.webhook' },
-      { name: 'AI Agent', type: 'n8n-nodes-base.ai' },
-      { name: 'Set', type: 'n8n-nodes-base.set' },
-      { name: 'Sticky Note', type: 'n8n-nodes-base.stickyNote' },
-    ];
-
-    it('captures all nodes with "all" filter (excluding auto-excluded)', async () => {
-      const mock = createMockExecuteFunctions({
-        inputItems: [{ json: { nodes: workflowNodes } }],
-        params: { useGetWorkflow: true, nodeFilterPreset: 'all' },
-        nodeProxy: {
-          Webhook: { json: { body: 'data' } },
-          'AI Agent': { json: { output: 'text' } },
-          Set: { json: { value: 1 } },
-        },
-        itemsProxy: {
-          Webhook: [{ body: 'data' }],
-          'AI Agent': [{ output: 'text' }],
-          Set: [{ value: 1 }],
-        },
-      });
-
-      const result = await node.execute.call(mock);
-      expect(result[0]).toHaveLength(1);
-
-      const traceCall = mockSendTrace.mock.calls[0];
-      const payload = traceCall[3] as OptimizedTracePayload;
-      expect(payload.status).toBeDefined();
-      expect(payload.data).toBeDefined();
+  describe('workflow source resolution', () => {
+    it('uses n8n REST API when n8nApiKey is configured', async () => {
+      const { mock, httpRequest } = createMockExecuteFunctions();
+      await node.execute.call(mock);
+      expect(httpRequest).toHaveBeenCalledOnce();
+      const args = httpRequest.mock.calls[0][0] as { headers: Record<string, string>; url: string };
+      expect(args.url).toContain('/workflows/wf-123');
+      expect(args.headers['X-N8N-API-KEY']).toBe('fake-n8n-key');
     });
 
-    it('filters AI nodes with "ai" filter', async () => {
-      const mock = createMockExecuteFunctions({
-        inputItems: [{ json: { nodes: workflowNodes } }],
-        params: { useGetWorkflow: true, nodeFilterPreset: 'ai' },
-        nodeProxy: {
-          'AI Agent': { json: { output: 'text' } },
-        },
-        itemsProxy: {
-          'AI Agent': [{ output: 'text' }],
-        },
+    it('falls back to upstream Get Workflow node when no n8nApiKey', async () => {
+      const { mock, httpRequest } = createMockExecuteFunctions({
+        credentials: { apiKey: 'test-api-key' },
+        inputItems: [
+          { json: { nodes: DEFAULT_WORKFLOW_NODES, connections: DEFAULT_CONNECTIONS } },
+        ],
       });
-
-      const result = await node.execute.call(mock);
-      expect(result[0]).toHaveLength(1);
-
-      const traceCall = mockSendTrace.mock.calls[0];
-      const payload = traceCall[3] as OptimizedTracePayload;
-      expect(Object.keys(payload.data)).toEqual(['AI Agent']);
+      await node.execute.call(mock);
+      expect(httpRequest).not.toHaveBeenCalled();
+      const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
+      expect(payload.spans.map((s) => s.name).sort()).toEqual([
+        'AI Agent',
+        'HTTP Request',
+        'Webhook',
+      ]);
     });
 
-    it('uses custom node names with "custom" filter', async () => {
-      const mock = createMockExecuteFunctions({
-        inputItems: [{ json: { nodes: workflowNodes } }],
-        params: {
-          useGetWorkflow: true,
-          nodeFilterPreset: 'custom',
-          customTargetNodes: 'Webhook',
-        },
-        nodeProxy: {
-          Webhook: { json: { body: 'data' } },
-        },
-        itemsProxy: {
-          Webhook: [{ body: 'data' }],
-        },
+    it('throws actionable error with docs link when neither source is available', async () => {
+      const { mock } = createMockExecuteFunctions({
+        credentials: { apiKey: 'test-api-key' },
+        inputItems: [{ json: { message: 'hello' } }],
       });
+      await expect(node.execute.call(mock)).rejects.toThrow(NodeOperationError);
+      await expect(node.execute.call(mock)).rejects.toThrow(/Cannot enumerate workflow nodes/);
+    });
+  });
 
-      const result = await node.execute.call(mock);
-      const traceCall = mockSendTrace.mock.calls[0];
-      const payload = traceCall[3] as OptimizedTracePayload;
-      expect(Object.keys(payload.data)).toEqual(['Webhook']);
+  describe('request id resolution', () => {
+    it('prefers manual override', async () => {
+      const { mock } = createMockExecuteFunctions({ params: { requestId: 'manual-id' } });
+      await node.execute.call(mock);
+      expect(mockSendTrace.mock.calls[0][5]).toBe('manual-id');
+    });
+
+    it('auto-detects x-request-id from input headers', async () => {
+      const { mock } = createMockExecuteFunctions({
+        inputItems: [{ json: { headers: { 'x-request-id': 'header-id' } } }],
+      });
+      await node.execute.call(mock);
+      expect(mockSendTrace.mock.calls[0][5]).toBe('header-id');
+    });
+
+    it('falls back to executionId when nothing else is found', async () => {
+      const { mock } = createMockExecuteFunctions({ executionId: 'exec-xyz' });
+      await node.execute.call(mock);
+      expect(mockSendTrace.mock.calls[0][5]).toBe('exec-xyz');
     });
   });
 
   describe('validations', () => {
-    it('throws when no target nodes configured', async () => {
-      const mock = createMockExecuteFunctions({
-        params: { targetNodes: '' },
-      });
-
-      await expect(node.execute.call(mock)).rejects.toThrow(NodeOperationError);
-      await expect(node.execute.call(mock)).rejects.toThrow('No target nodes configured');
-    });
-
-    it('throws when platformId is invalid UUID', async () => {
-      const mock = createMockExecuteFunctions({
-        params: { platformId: 'not-a-uuid' },
-      });
-
+    it('throws when platformId is not a valid UUID', async () => {
+      const { mock } = createMockExecuteFunctions({ params: { platformId: 'not-a-uuid' } });
       await expect(node.execute.call(mock)).rejects.toThrow('Agent ID must be a valid UUID');
     });
 
-    it('throws when get workflow mode has no nodes in input', async () => {
-      const mock = createMockExecuteFunctions({
-        inputItems: [{ json: {} }],
-        params: { useGetWorkflow: true },
-      });
-
-      await expect(node.execute.call(mock)).rejects.toThrow('No workflow nodes found');
+    it('throws when no node has executed data', async () => {
+      const { mock } = createMockExecuteFunctions({ itemsProxy: {} });
+      await expect(node.execute.call(mock)).rejects.toThrow('No executed nodes were captured');
     });
   });
 
   describe('error handling', () => {
     it('throws NodeOperationError when continueOnFail is false', async () => {
       mockSendTrace.mockRejectedValue({ message: 'Connection refused' });
-      const mock = createMockExecuteFunctions();
-
+      const { mock } = createMockExecuteFunctions();
       await expect(node.execute.call(mock)).rejects.toThrow('Failed to send trace');
     });
 
     it('returns trace with sent=false when continueOnFail is true', async () => {
       mockSendTrace.mockRejectedValue({ message: 'Connection refused' });
-      const mock = createMockExecuteFunctions({ continueOnFail: true });
-
+      const { mock } = createMockExecuteFunctions({ continueOnFail: true });
       const result = await node.execute.call(mock);
-      expect(result[0]).toHaveLength(1);
-
       const trace = result[0][0].json._miboTrace as IDataObject;
       expect(trace.sent).toBe(false);
       expect(trace.error).toBe('Connection refused');
-    });
-  });
-
-  describe('request ID detection', () => {
-    it('uses manual requestId when provided', async () => {
-      const mock = createMockExecuteFunctions({
-        params: { requestId: 'manual-req-id' },
-      });
-
-      await node.execute.call(mock);
-      const traceCall = mockSendTrace.mock.calls[0];
-      expect(traceCall[5]).toBe('manual-req-id');
-    });
-
-    it('auto-detects requestId from input data headers', async () => {
-      const mock = createMockExecuteFunctions({
-        inputItems: [{ json: { headers: { 'x-request-id': 'auto-detected-id' } } }],
-      });
-
-      await node.execute.call(mock);
-      const traceCall = mockSendTrace.mock.calls[0];
-      expect(traceCall[5]).toBe('auto-detected-id');
     });
   });
 });

@@ -1,12 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import type { IDataObject, IExecuteFunctions } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
-import type {
-  MetadataFields,
-  NodeDataInput,
-  OptimizedNodeData,
-  OptimizedTracePayload,
-  TracePayload,
-} from './types';
+import type { CanonicalSpan, CanonicalTracePayload, MetadataFields, SpanSource } from './types';
+import { safeStringify } from './utils';
 
 export function buildMetadata(
   workflowId: string,
@@ -56,81 +52,69 @@ export function buildMetadata(
   return metadata;
 }
 
-export function buildTracePayload(
-  inputData: IDataObject[],
+function resolveCapturedAncestor(
+  nodeName: string,
+  spanIdByNode: Record<string, string>,
+  parentMap: Record<string, string | null>,
+): string | null {
+  const seen = new Set<string>([nodeName]);
+  let current = parentMap[nodeName] ?? null;
+  while (current && !seen.has(current)) {
+    if (spanIdByNode[current]) return spanIdByNode[current];
+    seen.add(current);
+    current = parentMap[current] ?? null;
+  }
+  return null;
+}
+
+function buildSpan(
+  source: SpanSource,
+  spanIdByNode: Record<string, string>,
+  parentMap: Record<string, string | null>,
+): CanonicalSpan {
+  const spanId = spanIdByNode[source.nodeName];
+  const parentSpanId = resolveCapturedAncestor(source.nodeName, spanIdByNode, parentMap);
+
+  const attributes: Record<string, unknown> = {
+    'n8n.node.type': source.type,
+    'n8n.node.status': source.status,
+  };
+
+  if (source.parameters && Object.keys(source.parameters).length > 0) {
+    attributes['n8n.node.parameters'] = safeStringify(source.parameters);
+  }
+
+  if (source.status === 'success' && source.items.length > 0) {
+    const output = source.items.length === 1 ? source.items[0] : source.items;
+    attributes['n8n.node.output'] = safeStringify(output);
+  }
+
+  return {
+    span_id: spanId,
+    parent_span_id: parentSpanId,
+    name: source.nodeName,
+    attributes,
+  };
+}
+
+export function buildCanonicalTracePayload(
+  sources: SpanSource[],
   workflowId: string,
   metadata: IDataObject,
   platformId: string,
-  externalId: string,
-  nodesData?: NodeDataInput[],
-): TracePayload {
-  const payload: TracePayload = {
-    data: {
-      input: inputData,
-    },
-    externalMetadata: {
-      workflowId,
-    },
+  parentMap: Record<string, string | null>,
+): CanonicalTracePayload {
+  const spanIdByNode: Record<string, string> = {};
+  for (const s of sources) {
+    spanIdByNode[s.nodeName] = randomUUID();
+  }
+
+  const spans = sources.map((s) => buildSpan(s, spanIdByNode, parentMap));
+
+  const payload: CanonicalTracePayload = {
+    spans,
+    externalMetadata: { workflowId },
     metadata,
-  };
-
-  if (nodesData && nodesData.length > 0) {
-    payload.data.nodes = nodesData;
-  }
-
-  if (platformId) {
-    payload.platformId = platformId;
-  }
-
-  if (externalId) {
-    payload.externalId = externalId;
-  }
-
-  return payload;
-}
-
-export function buildOptimizedTracePayload(
-  nodesData: NodeDataInput[],
-  workflowId: string,
-  workflowName: string,
-  timestamp: string,
-  platformId?: string,
-  extraMetadata?: IDataObject,
-): OptimizedTracePayload {
-  const data: Record<string, OptimizedNodeData> = {};
-  let hasSkipped = false;
-
-  for (const node of nodesData) {
-    if (node._notExecuted) {
-      hasSkipped = true;
-      data[node.nodeName] = {
-        output: {},
-        type: node.type || 'unknown',
-        status: 'skipped',
-      };
-    } else {
-      const output = node.items.length === 1 ? node.items[0] : node.items;
-      const nodeEntry: OptimizedNodeData = {
-        output,
-        type: node.type || 'unknown',
-        status: 'success',
-      };
-      if (node.parameters && Object.keys(node.parameters).length > 0) {
-        nodeEntry.parameters = node.parameters;
-      }
-      data[node.nodeName] = nodeEntry;
-    }
-  }
-
-  const payload: OptimizedTracePayload = {
-    status: hasSkipped ? 'partial' : 'success',
-    data,
-    metadata: {
-      workflow_id: workflowId,
-      workflow_name: workflowName,
-      timestamp,
-      ...extraMetadata,
-    },
   };
 
   if (platformId) {

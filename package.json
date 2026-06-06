@@ -1,8 +1,8 @@
 {
   "name": "@mibo-ai/n8n-nodes-mibo-testing",
-  "version": "0.2.1",
-  "description": "n8n community node for Mibo Testing - Capture and send workflow traces for semantic and procedural testing",
-  "license": "GPL-3.0-or-later",
+  "version": "1.0.0",
+  "description": "Capture n8n workflow traces and send them to Mibo Testing for AI testing and assertions.",
+  "license": "MIT",
   "homepage": "https://github.com/mibo-ai/mibo-testing-n8n-node",
   "keywords": [
     "n8n-community-node-package",
@@ -22,27 +22,20 @@
   },
   "engines": {
     "node": ">=20.0.0",
-    "pnpm": ">=10.0.0",
-    "npm": "please-use-pnpm",
-    "yarn": "please-use-pnpm"
+    "pnpm": ">=10.0.0"
   },
   "scripts": {
-    "build": "tsc && pnpm run copy:icons",
-    "copy:icons": "node scripts/copy-icons.mjs",
+    "build": "tsc && node scripts/copy-icons.mjs",
     "watch": "tsc --watch",
     "check": "biome check nodes credentials",
     "check:fix": "biome check --fix nodes credentials",
-    "skills:sync": "skills add ./skills -y",
-    "prepublishOnly": "pnpm run build",
-    "------- DEV -------": "echo 'Development commands'",
-    "dev": "node scripts/dev.mjs",
-    "dev:docker": "node scripts/dev-docker.mjs",
-    "dev:link": "pnpm run build && pnpm link",
-    "------- PROD -------": "echo 'Production commands'",
-    "docker:build": "docker build -t n8n-mibo-testing:latest .",
-    "docker:run": "docker compose up -d",
     "test": "vitest run",
-    "test:watch": "vitest --watch"
+    "test:watch": "vitest --watch",
+    "dev": "node scripts/dev-docker.mjs",
+    "dev:local": "node scripts/dev.mjs",
+    "dev:link": "pnpm run build && pnpm link",
+    "skills:sync": "skills add ./skills -y",
+    "prepublishOnly": "pnpm run build"
   },
   "publishConfig": {
     "access": "public"
@@ -63,7 +56,7 @@
     "@biomejs/biome": "^2.4.6",
     "@types/node": "^22.0.0",
     "chokidar": "^4.0.0",
-    "n8n-workflow": "*",
+    "n8n-workflow": "^2.7.0",
     "pino": "^9.0.0",
     "pino-pretty": "^13.0.0",
     "skills": "^1.5.7",
@@ -71,6 +64,6 @@
     "vitest": "^4.0.18"
   },
   "peerDependencies": {
-    "n8n-workflow": "*"
+    "n8n-workflow": ">=2.0.0"
   }
 }

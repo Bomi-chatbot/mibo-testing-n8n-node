@@ -38,7 +38,9 @@ The node observes a workflow; it does **not** participate in it.
 
 - Adding a field is non-breaking from the node's perspective but may be ignored by older API versions — coordinate before relying on it client-side.
 - Renaming or removing a field is **breaking** for the server. Use `feat!:` and a `BREAKING CHANGE:` footer; see the `release-flow` skill.
-- Two payload shapes exist (`buildTracePayload` and `buildOptimizedTracePayload`); a change to one rarely makes sense in isolation — review both.
+- One canonical shape: `buildCanonicalTracePayload` emits `{ spans, externalMetadata, metadata, platformId? }` — `spans` is **top-level**, not nested under `data`. The legacy `data.input` / `data.nodes` shape has been deleted; do not reintroduce it.
+- **Identity is HTTP-header-only.** `externalId` is read by the API from the `x-request-id` request header — never from the body. Don't add `externalId` (or any identity field) back into the payload; clients that disagree about identity create silent duplicate / overwrite bugs.
+- `span.name` is the **user-facing display label** (n8n node display name), never the technical id. Mibo `node_call` assertions match against this string verbatim.
 
 ## Compression boundary
 

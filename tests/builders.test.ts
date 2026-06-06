@@ -1,17 +1,16 @@
 import type { IExecuteFunctions, INode } from 'n8n-workflow';
 
-import { describe, expect, it, vi } from 'vitest';
 import { NodeOperationError } from 'n8n-workflow';
+import { describe, expect, it } from 'vitest';
 
-import {
-  buildMetadata,
-  buildOptimizedTracePayload,
-  buildTracePayload,
-} from '../nodes/MiboTesting/builders';
+import { buildCanonicalTracePayload, buildMetadata } from '../nodes/MiboTesting/builders';
+import type { SpanSource } from '../nodes/MiboTesting/types';
 
 const mockNode = {
   getNode: () => ({ name: 'Test Node' }) as INode,
 } as unknown as IExecuteFunctions;
+
+const UUID_RX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 describe('buildMetadata', () => {
   const base = {
@@ -21,7 +20,14 @@ describe('buildMetadata', () => {
   };
 
   it('returns base metadata when includeMetadata is false', () => {
-    const result = buildMetadata(base.workflowId, base.workflowName, base.timestamp, false, {}, mockNode);
+    const result = buildMetadata(
+      base.workflowId,
+      base.workflowName,
+      base.timestamp,
+      false,
+      {},
+      mockNode,
+    );
     expect(result).toEqual({
       workflowId: 'wf-1',
       workflowName: 'Test Workflow',
@@ -30,7 +36,14 @@ describe('buildMetadata', () => {
   });
 
   it('returns base metadata when includeMetadata is true but no fields', () => {
-    const result = buildMetadata(base.workflowId, base.workflowName, base.timestamp, true, {}, mockNode);
+    const result = buildMetadata(
+      base.workflowId,
+      base.workflowName,
+      base.timestamp,
+      true,
+      {},
+      mockNode,
+    );
     expect(result).toEqual({
       workflowId: 'wf-1',
       workflowName: 'Test Workflow',
@@ -40,21 +53,42 @@ describe('buildMetadata', () => {
 
   it('includes environment and version when provided', () => {
     const config = { fields: { environment: 'staging', version: '2.0.0' } };
-    const result = buildMetadata(base.workflowId, base.workflowName, base.timestamp, true, config, mockNode);
+    const result = buildMetadata(
+      base.workflowId,
+      base.workflowName,
+      base.timestamp,
+      true,
+      config,
+      mockNode,
+    );
     expect(result.environment).toBe('staging');
     expect(result.version).toBe('2.0.0');
   });
 
   it('merges additionalFields from JSON string', () => {
     const config = { fields: { additionalFields: '{"team":"backend","feature":"auth"}' } };
-    const result = buildMetadata(base.workflowId, base.workflowName, base.timestamp, true, config, mockNode);
+    const result = buildMetadata(
+      base.workflowId,
+      base.workflowName,
+      base.timestamp,
+      true,
+      config,
+      mockNode,
+    );
     expect(result.team).toBe('backend');
     expect(result.feature).toBe('auth');
   });
 
   it('merges additionalFields from object', () => {
     const config = { fields: { additionalFields: { team: 'backend' } } };
-    const result = buildMetadata(base.workflowId, base.workflowName, base.timestamp, true, config, mockNode);
+    const result = buildMetadata(
+      base.workflowId,
+      base.workflowName,
+      base.timestamp,
+      true,
+      config,
+      mockNode,
+    );
     expect(result.team).toBe('backend');
   });
 
@@ -66,134 +100,128 @@ describe('buildMetadata', () => {
   });
 });
 
-describe('buildTracePayload', () => {
-  it('builds basic payload', () => {
-    const result = buildTracePayload(
-      [{ input: 'hello' }],
-      'wf-1',
-      { workflowId: 'wf-1' },
-      '',
-      '',
-    );
-    expect(result.data.input).toEqual([{ input: 'hello' }]);
-    expect(result.externalMetadata.workflowId).toBe('wf-1');
-    expect(result.platformId).toBeUndefined();
-    expect(result.externalId).toBeUndefined();
+describe('buildCanonicalTracePayload', () => {
+  const sources: SpanSource[] = [
+    {
+      nodeName: 'Webhook',
+      type: 'n8n-nodes-base.webhook',
+      status: 'success',
+      items: [{ body: { question: 'hi' } }],
+    },
+    {
+      nodeName: 'HTTP Request',
+      type: 'n8n-nodes-base.httpRequest',
+      status: 'success',
+      items: [{ response: 'ok' }],
+      parameters: { url: 'https://example.com', method: 'GET' },
+    },
+    {
+      nodeName: 'AI Agent',
+      type: '@n8n/n8n-nodes-langchain.agent',
+      status: 'success',
+      items: [{ output: 'reply' }],
+    },
+  ];
+
+  const parentMap = {
+    'HTTP Request': 'Webhook',
+    'AI Agent': 'HTTP Request',
+  };
+
+  it('emits one span per source, names match display, parents wired through internal span_ids', () => {
+    const payload = buildCanonicalTracePayload(sources, 'wf-1', { workflowId: 'wf-1' }, '', parentMap);
+    expect(payload.spans).toHaveLength(3);
+
+    const [webhook, http, agent] = payload.spans;
+    expect(webhook.name).toBe('Webhook');
+    expect(http.name).toBe('HTTP Request');
+    expect(agent.name).toBe('AI Agent');
+
+    expect(webhook.parent_span_id).toBeNull();
+    expect(http.parent_span_id).toBe(webhook.span_id);
+    expect(agent.parent_span_id).toBe(http.span_id);
+
+    for (const s of payload.spans) {
+      expect(s.span_id).toMatch(UUID_RX);
+    }
   });
 
-  it('includes platformId when provided', () => {
-    const result = buildTracePayload([], 'wf-1', {}, '019469a5-cb6b-7c5e-9e6a-1a2b3c4d5e6f', '');
-    expect(result.platformId).toBe('019469a5-cb6b-7c5e-9e6a-1a2b3c4d5e6f');
-  });
-
-  it('includes externalId when provided', () => {
-    const result = buildTracePayload([], 'wf-1', {}, '', 'ext-123');
-    expect(result.externalId).toBe('ext-123');
-  });
-
-  it('includes nodesData when provided', () => {
-    const nodes = [{ nodeName: 'Webhook', items: [{ body: 'data' }], type: 'webhook' }];
-    const result = buildTracePayload([], 'wf-1', {}, '', '', nodes);
-    expect(result.data.nodes).toEqual(nodes);
-  });
-
-  it('omits nodesData when empty array', () => {
-    const result = buildTracePayload([], 'wf-1', {}, '', '', []);
-    expect(result.data.nodes).toBeUndefined();
-  });
-});
-
-describe('buildOptimizedTracePayload', () => {
-  it('sets status to success when all nodes executed', () => {
-    const nodes = [
-      { nodeName: 'Node1', items: [{ out: 1 }], type: 'httpRequest' },
-      { nodeName: 'Node2', items: [{ out: 2 }], type: 'ai' },
+  it('encodes single-item output as object, multi-item as array, both JSON-stringified', () => {
+    const multi: SpanSource[] = [
+      { nodeName: 'A', type: 't', status: 'success', items: [{ x: 1 }] },
+      { nodeName: 'B', type: 't', status: 'success', items: [{ x: 1 }, { x: 2 }] },
     ];
-    const result = buildOptimizedTracePayload(nodes, 'wf-1', 'My Flow', '2025-01-01T00:00:00.000Z');
-    expect(result.status).toBe('success');
-    expect(result.data['Node1'].status).toBe('success');
-    expect(result.data['Node2'].status).toBe('success');
+    const payload = buildCanonicalTracePayload(multi, 'wf-1', {}, '', {});
+    expect(payload.spans[0].attributes['n8n.node.output']).toBe('{"x":1}');
+    expect(payload.spans[1].attributes['n8n.node.output']).toBe('[{"x":1},{"x":2}]');
   });
 
-  it('sets status to partial when some nodes are skipped', () => {
-    const nodes = [
-      { nodeName: 'Node1', items: [{ out: 1 }], type: 'httpRequest' },
-      { nodeName: 'Node2', items: [], type: 'ai', _notExecuted: true },
+  it('marks skipped sources without output attribute', () => {
+    const skipped: SpanSource[] = [
+      { nodeName: 'NotExecuted', type: 't', status: 'skipped', items: [] },
     ];
-    const result = buildOptimizedTracePayload(nodes, 'wf-1', 'My Flow', '2025-01-01T00:00:00.000Z');
-    expect(result.status).toBe('partial');
-    expect(result.data['Node1'].status).toBe('success');
-    expect(result.data['Node2'].status).toBe('skipped');
-    expect(result.data['Node2'].output).toEqual({});
+    const span = buildCanonicalTracePayload(skipped, 'wf-1', {}, '', {}).spans[0];
+    expect(span.attributes['n8n.node.status']).toBe('skipped');
+    expect(span.attributes['n8n.node.output']).toBeUndefined();
   });
 
-  it('unwraps single-item arrays', () => {
-    const nodes = [{ nodeName: 'Node1', items: [{ value: 'single' }], type: 'test' }];
-    const result = buildOptimizedTracePayload(nodes, 'wf-1', 'Flow', '2025-01-01T00:00:00.000Z');
-    expect(result.data['Node1'].output).toEqual({ value: 'single' });
-  });
-
-  it('keeps multi-item arrays as arrays', () => {
-    const nodes = [{ nodeName: 'Node1', items: [{ a: 1 }, { b: 2 }], type: 'test' }];
-    const result = buildOptimizedTracePayload(nodes, 'wf-1', 'Flow', '2025-01-01T00:00:00.000Z');
-    expect(result.data['Node1'].output).toEqual([{ a: 1 }, { b: 2 }]);
-  });
-
-  it('includes platformId when provided', () => {
-    const result = buildOptimizedTracePayload([], 'wf-1', 'Flow', '2025-01-01T00:00:00.000Z', 'plat-id');
-    expect(result.platformId).toBe('plat-id');
-  });
-
-  it('omits platformId when not provided', () => {
-    const result = buildOptimizedTracePayload([], 'wf-1', 'Flow', '2025-01-01T00:00:00.000Z');
-    expect(result.platformId).toBeUndefined();
-  });
-
-  it('merges extra metadata', () => {
-    const result = buildOptimizedTracePayload(
-      [],
-      'wf-1',
-      'Flow',
-      '2025-01-01T00:00:00.000Z',
-      undefined,
-      { environment: 'prod' },
-    );
-    expect(result.metadata.environment).toBe('prod');
-    expect(result.metadata.workflow_id).toBe('wf-1');
-  });
-
-  it('defaults type to unknown', () => {
-    const nodes = [{ nodeName: 'Node1', items: [{ v: 1 }], type: undefined }];
-    const result = buildOptimizedTracePayload(nodes, 'wf-1', 'Flow', '2025-01-01T00:00:00.000Z');
-    expect(result.data['Node1'].type).toBe('unknown');
-  });
-
-  it('includes parameters when non-empty', () => {
-    const nodes = [
+  it('serializes BigInt parameters without throwing', () => {
+    const withBigint: SpanSource[] = [
       {
-        nodeName: 'Scrape Website',
-        items: [{ data: '<html>' }],
-        type: 'n8n-nodes-base.httpRequest',
-        parameters: { url: '={{ $json.targetUrl }}', method: 'GET', options: {} },
+        nodeName: 'A',
+        type: 't',
+        status: 'success',
+        items: [{ x: 1 }],
+        parameters: { limit: 9007199254740993n as unknown as number },
       },
     ];
-    const result = buildOptimizedTracePayload(nodes, 'wf-1', 'Flow', '2025-01-01T00:00:00.000Z');
-    expect(result.data['Scrape Website'].parameters).toEqual({
-      url: '={{ $json.targetUrl }}',
-      method: 'GET',
-      options: {},
-    });
+    const span = buildCanonicalTracePayload(withBigint, 'wf-1', {}, '', {}).spans[0];
+    expect(typeof span.attributes['n8n.node.parameters']).toBe('string');
+    expect(span.attributes['n8n.node.parameters']).toContain('9007199254740993');
   });
 
-  it('omits parameters when undefined', () => {
-    const nodes = [{ nodeName: 'Node1', items: [{ v: 1 }], type: 'test' }];
-    const result = buildOptimizedTracePayload(nodes, 'wf-1', 'Flow', '2025-01-01T00:00:00.000Z');
-    expect(result.data['Node1'].parameters).toBeUndefined();
+  it('does not self-parent on a self-looped connection', () => {
+    const looped: SpanSource[] = [
+      { nodeName: 'A', type: 't', status: 'success', items: [{ x: 1 }] },
+    ];
+    const span = buildCanonicalTracePayload(looped, 'wf-1', {}, '', { A: 'A' }).spans[0];
+    expect(span.parent_span_id).toBeNull();
   });
 
-  it('omits parameters when empty object', () => {
-    const nodes = [{ nodeName: 'Node1', items: [{ v: 1 }], type: 'test', parameters: {} }];
-    const result = buildOptimizedTracePayload(nodes, 'wf-1', 'Flow', '2025-01-01T00:00:00.000Z');
-    expect(result.data['Node1'].parameters).toBeUndefined();
+  it('walks past filtered ancestors to wire the nearest captured parent', () => {
+    const flow: SpanSource[] = [
+      { nodeName: 'Webhook', type: 't', status: 'success', items: [{ x: 1 }] },
+      { nodeName: 'AI Agent', type: 't', status: 'success', items: [{ x: 1 }] },
+    ];
+    // Sticky was filtered out before reaching the builder; AI Agent still hangs off Webhook.
+    const map = { Sticky: 'Webhook', 'AI Agent': 'Sticky' };
+    const spans = buildCanonicalTracePayload(flow, 'wf-1', {}, '', map).spans;
+    const webhook = spans.find((s) => s.name === 'Webhook');
+    const agent = spans.find((s) => s.name === 'AI Agent');
+    expect(agent?.parent_span_id).toBe(webhook?.span_id);
+  });
+
+  it('passes platformId when provided', () => {
+    const p = buildCanonicalTracePayload(
+      sources,
+      'wf-1',
+      {},
+      '019469a5-cb6b-7c5e-9e6a-1a2b3c4d5e6f',
+      parentMap,
+    );
+    expect(p.platformId).toBe('019469a5-cb6b-7c5e-9e6a-1a2b3c4d5e6f');
+  });
+
+  it('omits platformId when empty', () => {
+    const p = buildCanonicalTracePayload(sources, 'wf-1', {}, '', parentMap);
+    expect(p.platformId).toBeUndefined();
+  });
+
+  it('span.name uses display name verbatim (the Custom API contract)', () => {
+    const odd: SpanSource[] = [
+      { nodeName: 'My Custom AI Agent (v2)', type: 'x', status: 'success', items: [{ y: 1 }] },
+    ];
+    const span = buildCanonicalTracePayload(odd, 'wf-1', {}, '', {}).spans[0];
+    expect(span.name).toBe('My Custom AI Agent (v2)');
   });
 });

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { findRequestIdInData, isValidUUID, normalizeServerUrl } from '../nodes/MiboTesting/utils';
+import {
+  buildParentMap,
+  findRequestIdInData,
+  isValidUUID,
+  normalizeServerUrl,
+  safeStringify,
+} from '../nodes/MiboTesting/utils';
 
 describe('isValidUUID', () => {
   it('accepts valid v4 UUIDs', () => {
@@ -78,5 +84,47 @@ describe('findRequestIdInData', () => {
   it('does not recurse into arrays', () => {
     const data = { items: [{ headers: { 'x-request-id': 'in-array' } }] };
     expect(findRequestIdInData(data)).toBeUndefined();
+  });
+});
+
+describe('buildParentMap', () => {
+  it('maps each downstream node to its first upstream source', () => {
+    const connections = {
+      Webhook: { main: [[{ node: 'HTTP Request' }]] },
+      'HTTP Request': { main: [[{ node: 'AI Agent' }]] },
+    };
+    const parents = buildParentMap(connections);
+    expect(parents).toEqual({ 'HTTP Request': 'Webhook', 'AI Agent': 'HTTP Request' });
+  });
+
+  it('keeps the first parent when a node has multiple incoming edges', () => {
+    const connections = {
+      Source1: { main: [[{ node: 'Merge' }]] },
+      Source2: { main: [[{ node: 'Merge' }]] },
+    };
+    const parents = buildParentMap(connections);
+    expect(parents.Merge).toBe('Source1');
+  });
+
+  it('handles non-main connection types (ai_tool, etc.)', () => {
+    const connections = {
+      Tool: { ai_tool: [[{ node: 'AI Agent' }]] },
+    };
+    expect(buildParentMap(connections)['AI Agent']).toBe('Tool');
+  });
+
+  it('returns empty map for empty connections', () => {
+    expect(buildParentMap({})).toEqual({});
+  });
+});
+
+describe('safeStringify', () => {
+  it('stringifies plain objects', () => {
+    expect(safeStringify({ a: 1 })).toBe('{"a":1}');
+  });
+
+  it('coerces BigInt to string instead of throwing', () => {
+    const result = safeStringify({ big: 9007199254740993n });
+    expect(result).toContain('9007199254740993');
   });
 });

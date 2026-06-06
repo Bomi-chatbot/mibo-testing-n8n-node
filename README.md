@@ -4,14 +4,12 @@ n8n community node for **Mibo Testing** - a platform for semantic and procedural
 
 [![npm](https://img.shields.io/npm/v/@mibo-ai/n8n-nodes-mibo-testing)](https://www.npmjs.com/package/@mibo-ai/n8n-nodes-mibo-testing)
 
-## Features
-
-- **Auto-detect Workflow Nodes**: Automatically discover all nodes in your workflow via the n8n API, or fall back to the "Get Workflow" node
-- **Smart Node Filtering**: Filter captured nodes by preset (All, AI Only, HTTP/Webhook, Exclude Utility) or pick specific nodes
-- **Optimized Trace Format**: Compact payloads with node type information for server-side AI auto-detection
-- **Automatic Compression**: Payloads larger than 5MB are gzip-compressed before sending
-- **Request ID Correlation**: Auto-detects `x-request-id` from webhook headers for active testing
-- **Passthrough Design**: Captures traces transparently without modifying your workflow data
+- **Canonical OTEL-shaped trace**: emits one span per executed workflow node in the Mibo Custom API shape (`{spans: [...]}`), the same shape the dashboard renders. Works on **n8n Cloud and self-hosted** — no OTel SDK, no exporter, no host-level config.
+- **Automatic workflow capture**: discovers every executed node via the n8n API (when credentials carry an n8n API key) or via an upstream `Get Workflow` node. Auto-utility nodes (`stickyNote`, `noOp`, `wait`, …) are excluded.
+- **Parent linking**: `parent_span_id` follows the n8n connection graph so traces render as the workflow structure.
+- **Request-id correlation**: sets `x-request-id` from the manual override, then from incoming webhook headers, falling back to the n8n execution id.
+- **Gzip on large payloads**: payloads above 5 MB are compressed before POST.
+- **Passthrough**: input items pass through unchanged; only a `_miboTrace` summary is appended.
 
 ## Installation
 
@@ -43,50 +41,30 @@ Create a new credential of type **Mibo Testing API** with the following fields:
 
 ### Node Setup
 
-Add the **Mibo Testing** node at the end of your workflow (or wherever you want to capture the trace).
+Add the **Mibo Testing** node at the end of your workflow (or wherever you want to capture the trace). It always captures every executed node in the workflow — there are no filters or manual node lists to maintain.
 
-#### Auto-detect Mode (Recommended)
+The node needs to know which nodes the workflow contains. It supports two sources, tried in this order:
 
-Enable **Auto-detect Workflow Nodes** to automatically discover all nodes in your workflow.
-
-- If you configured the **n8n API Key** and **n8n Base URL** in the credentials, it works automatically with no extra setup.
-- If you didn't configure n8n API credentials, connect an n8n **"Get Workflow"** node before this one as a fallback.
+1. **n8n REST API (recommended)** — set **n8n API Key** in the credentials. Works out of the box on both n8n Cloud and self-hosted.
+2. **Upstream `Get Workflow` node** — connect an n8n `Get Workflow` node before the Mibo Testing node; its `nodes` and `connections` output are used as the fallback source.
 
 ```
-Auto-detect with n8n API credentials:
+With n8n API credentials:
 [Trigger] --> [Your Nodes] --> [Mibo Testing]
 
-Fallback without n8n API credentials:
+Without n8n API credentials:
 [Trigger] --> [Your Nodes] --> [Get Workflow] --> [Mibo Testing]
 ```
 
-**Node Filter** options when using Auto-detect:
+If neither source is available, the node errors with a link to <https://docs.mibo-ai.com/n8n-node/setup/>.
 
-| Filter | What it captures |
-|--------|-----------------|
-| All Nodes | Every node in the workflow (excluding internal/utility types) |
-| AI Nodes Only | Only nodes with "AI" in their name |
-| HTTP/Webhook Only | Only HTTP Request and Webhook nodes |
-| Exclude Utility Nodes | Everything except Set, If, Merge, and Switch |
-| Custom | You specify exact node names, separated by commas |
-
-#### Manual Mode
-
-Leave **Auto-detect Workflow Nodes** off and enter node names separated by commas in the **Target Nodes** field.
-
-```
-[Trigger] --> [Your Nodes] --> [Mibo Testing]
-                                    ^
-                        Target Nodes: "Webhook, AI Agent, HTTP Request"
-```
-
-### Other Parameters
+### Node Parameters
 
 | Parameter | Description |
 |-----------|-------------|
-| **Request ID** | The `x-request-id` for correlating this trace with test executions. Auto-detected from webhook headers if not provided. |
-| **Platform ID** | Your platform UUID in Mibo Testing. If not provided, the API resolves it from your API key restrictions. |
-| **Include Metadata** | Add environment, version, and custom fields to the trace. |
+| **Agent ID** | Your agent UUID in Mibo Testing. Leave empty if the API key is already scoped to a single agent. |
+| **Request ID** | Override the `x-request-id` used to correlate this trace. Defaults to the incoming webhook header, falling back to the n8n execution id. |
+| **Include Metadata** | Add environment, version, and custom fields to the trace metadata. |
 
 ### Advanced Options
 
@@ -107,12 +85,47 @@ The node passes through all input data unchanged, adding a `_miboTrace` object t
     "platformId": "550e8400-...",
     "requestId": "req-456",
     "timestamp": "2026-03-08T10:30:00.000Z",
-    "nodesCollected": 3,
-    "targetNodes": ["Webhook", "AI Agent", "HTTP Request"],
+    "spansSent": 3,
     "payloadSize": "12.5 KB"
   }
 }
 ```
+
+## Trace shape
+
+The node POSTs to `POST /public/traces` using the Mibo **Custom API** shape:
+
+```json
+{
+  "spans": [
+    {
+      "span_id": "<uuid>",
+      "parent_span_id": null,
+      "name": "Webhook",
+      "attributes": {
+        "n8n.node.type": "n8n-nodes-base.webhook",
+        "n8n.node.status": "success",
+        "n8n.node.output": "{\"body\":\"hi\"}"
+      }
+    },
+    {
+      "span_id": "<uuid>",
+      "parent_span_id": "<webhook-span-id>",
+      "name": "AI Agent",
+      "attributes": {
+        "n8n.node.type": "@n8n/n8n-nodes-langchain.agent",
+        "n8n.node.status": "success",
+        "n8n.node.output": "{\"output\":\"reply\"}"
+      }
+    }
+  ],
+  "externalMetadata": { "workflowId": "..." },
+  "metadata": { "workflowId": "...", "workflowName": "...", "timestamp": "..." },
+  "platformId": "<optional>"
+}
+```
+
+`span.name` is the **n8n display name** of the node — the same string you see in the n8n editor and the same string Mibo `node_call` assertions match against. Identity (the `externalId` Mibo uses for create-or-replace correlation) is sent via the `x-request-id` HTTP header, not in the body. See <https://docs.mibo-ai.com/n8n-node/setup/> for the full reference.
 
 ---
 
@@ -120,9 +133,9 @@ The node passes through all input data unchanged, adding a `_miboTrace` object t
 
 ### Prerequisites
 
-- Node.js >= 20.0.0
-- pnpm >= 10.0.0
-- Docker (optional, for Docker-based development)
+- Node.js >= 20
+- pnpm >= 10
+- Docker (for the default dev flow)
 
 ### Setup
 
@@ -132,96 +145,24 @@ cd mibo-testing-n8n-node
 pnpm install
 ```
 
-### Development Options
+### Development
 
-#### Option 1: Local Development (Recommended)
-
-Requires n8n installed globally:
+The default dev flow runs n8n in Docker — no global installs needed.
 
 ```bash
-# Install n8n globally (one time)
-pnpm add -g n8n
-
-# Build and link the node
-pnpm run dev:link
-
-# Link to your n8n installation (one time)
-cd ~/.n8n && npm link @mibo-ai/n8n-nodes-mibo-testing
-
-# Start development mode (builds, watches, restarts n8n on changes)
 pnpm run dev
 ```
 
-Open http://localhost:5678 to access n8n.
+Builds the node, starts n8n in Docker, and watches for source changes. Open http://localhost:5678 — reload the workflow in n8n to pick up rebuilt code.
 
-#### Option 2: Docker Development
-
-No global n8n installation needed:
+If you prefer running n8n directly on your machine (requires `n8n` installed globally):
 
 ```bash
-pnpm run dev:docker
-```
-
-Builds the project, starts n8n in Docker, and watches for file changes. Reload your workflow in n8n to pick up changes.
-
-Open http://localhost:5678 to access n8n.
-
-### Available Commands
-
-| Command | Description |
-|---------|-------------|
-| `pnpm run build` | Compile TypeScript to `dist/` |
-| `pnpm run dev` | Local development with hot reload |
-| `pnpm run dev:docker` | Docker development with hot reload |
-| `pnpm run dev:link` | Build and link for local n8n |
-| `pnpm test` | Run unit tests |
-| `pnpm test:watch` | Run tests in watch mode |
-| `pnpm run check` | Run Biome linter and formatter |
-| `pnpm run check:fix` | Auto-fix linting and formatting issues |
-| `pnpm run docker:build` | Build production Docker image |
-
-### Makefile Shortcuts
-
-```bash
-make help         # Show all commands
-make dev          # Same as pnpm run dev
-make dev-docker   # Same as pnpm run dev:docker
-make build        # Same as pnpm run build
-make check        # Same as pnpm run check
-make clean        # Remove dist/ and node_modules/
-```
-
-### Project Structure
-
-```
-├── nodes/MiboTesting/
-│   ├── MiboTesting.node.ts       # Main node implementation
-│   ├── builders.ts               # Trace payload builders
-│   ├── constants.ts              # Configuration constants
-│   ├── mibo-client.ts            # HTTP client for Mibo API
-│   ├── types.ts                  # TypeScript interfaces
-│   ├── utils.ts                  # Utility functions
-│   └── mibo-testing.svg          # Node icon
-├── credentials/
-│   └── MiboTestingApi.credentials.ts
-├── tests/
-│   ├── node.test.ts              # Node execution tests
-│   ├── builders.test.ts          # Payload builder tests
-│   ├── mibo-client.test.ts       # HTTP client tests
-│   └── utils.test.ts             # Utility function tests
-├── scripts/
-│   ├── dev.mjs                   # Local dev script
-│   ├── dev-docker.mjs            # Docker dev script
-│   └── copy-icons.mjs            # Icon copy utility
-├── docs/                         # Internal documentation
-├── dist/                         # Compiled output (generated)
-├── docker-compose.dev.yml        # Docker development config
-├── Dockerfile                    # Production Docker image
-└── Makefile                      # Convenience commands
+pnpm run dev:local
 ```
 
 ---
 
 ## License
 
-[GPL-3.0-or-later](LICENSE)
+[MIT](LICENSE)

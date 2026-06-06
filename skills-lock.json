@@ -9,7 +9,7 @@
     "n8n-node": {
       "source": "/Users/fernando.mirabile/projects/mios/mibo-testing-n8n-node/skills",
       "sourceType": "local",
-      "computedHash": "d493f798552133a55236331abf3cccc75cf0ef6b51c5238cacd2f8ad9d9b5848"
+      "computedHash": "809944acf77fc43052697ebf446619285a04c3408d13e47a531d0a08c7fce088"
     },
     "release-flow": {
       "source": "/Users/fernando.mirabile/projects/mios/mibo-testing-n8n-node/skills",
