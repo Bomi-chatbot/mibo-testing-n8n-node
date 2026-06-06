@@ -31,4 +31,4 @@ jobs:
 
       - run: npm install -g npm@latest
 
-      - run: pnpm publish --provenance --access public --no-git-checks
+      - run: npm publish --provenance --access public
