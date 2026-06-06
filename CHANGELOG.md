@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1](https://github.com/mibo-ai/mibo-testing-n8n-node/compare/n8n-nodes-mibo-testing-v1.0.0...n8n-nodes-mibo-testing-v1.0.1) (2026-06-06)
+
+
+### Bug Fixes
+
+* comply with n8n verified-community-node guidelines ([b83aff2](https://github.com/mibo-ai/mibo-testing-n8n-node/commit/b83aff24b093e5e12a3b09629549f40683f2ee3a))
+* credential icon + sync agent docs to post-gzip reality ([fc730ab](https://github.com/mibo-ai/mibo-testing-n8n-node/commit/fc730abb79072ff88c2b7b66460ae0d7fc2ea0e5))
+
 ## [1.0.0](https://github.com/mibo-ai/mibo-testing-n8n-node/compare/n8n-nodes-mibo-testing-v0.2.1...n8n-nodes-mibo-testing-v1.0.0) (2026-06-06)
 
 

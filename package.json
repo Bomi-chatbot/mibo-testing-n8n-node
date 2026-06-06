@@ -1,6 +1,6 @@
 {
   "name": "@mibo-ai/n8n-nodes-mibo-testing",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Capture n8n workflow traces and send them to Mibo Testing for AI testing and assertions.",
   "license": "MIT",
   "homepage": "https://github.com/mibo-ai/mibo-testing-n8n-node",
