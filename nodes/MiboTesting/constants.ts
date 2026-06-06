@@ -29,9 +29,9 @@ export const ERROR_CODES = {
   VALIDATION_ERROR: 'The request body failed validation.',
   PLATFORM_NOT_FOUND: {
     withRestrictions:
-      'The API key is restricted to specific platforms. Verify that the platformId matches one of the allowed platforms.',
+      'The API key is restricted to specific agents. Verify that the agentId matches one of the allowed agents.',
     withoutRestrictions:
-      'Could not determine the target platform. Send a platformId in the body, or restrict the API key to a single platform.',
+      'Could not determine the target agent. Send an agentId in the body, or restrict the API key to a single agent.',
   },
   AUTH_ERROR: 'Internal error while validating the API key. Contact support.',
   INTERNAL_SERVER_ERROR: 'Unexpected server error. Contact support if it persists.',

@@ -224,7 +224,7 @@ describe('MiboTesting.execute', () => {
         params: { platformId: 'not-a-uuid' },
       });
 
-      await expect(node.execute.call(mock)).rejects.toThrow('Platform ID must be a valid UUID');
+      await expect(node.execute.call(mock)).rejects.toThrow('Agent ID must be a valid UUID');
     });
 
     it('throws when get workflow mode has no nodes in input', async () => {

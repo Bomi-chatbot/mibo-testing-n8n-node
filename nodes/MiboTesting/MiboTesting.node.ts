@@ -134,11 +134,11 @@ export class MiboTesting implements INodeType {
         placeholder: '={{ $("Webhook").item.json.headers["x-request-id"] }}',
       },
       {
-        displayName: 'Platform ID',
+        displayName: 'Agent ID',
         name: 'platformId',
         type: 'string',
         default: '',
-        description: 'The unique identifier for your platform in Mibo Testing (UUID format)',
+        description: 'The unique identifier for your agent in Mibo Testing (UUID format)',
         placeholder: 'e.g., 550e8400-e29b-41d4-a716-446655440000',
       },
       {
@@ -305,9 +305,9 @@ export class MiboTesting implements INodeType {
     const options = this.getNodeParameter('options', 0, {}) as NodeOptions;
 
     if (platformId && !isValidUUID(platformId)) {
-      throw new NodeOperationError(this.getNode(), 'Platform ID must be a valid UUID', {
+      throw new NodeOperationError(this.getNode(), 'Agent ID must be a valid UUID', {
         description:
-          'The Platform ID must be in UUID format (e.g., 550e8400-e29b-41d4-a716-446655440000)',
+          'The Agent ID must be in UUID format (e.g., 550e8400-e29b-41d4-a716-446655440000)',
       });
     }
 

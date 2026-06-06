@@ -43,7 +43,7 @@ describe('parseErrorResponse', () => {
       },
     };
     const result = parseErrorResponse(error);
-    expect(result).toContain('Could not determine the target platform');
+    expect(result).toContain('Could not determine the target agent');
   });
 
   it('handles PLATFORM_NOT_FOUND with restrictions', () => {
@@ -58,7 +58,7 @@ describe('parseErrorResponse', () => {
       },
     };
     const result = parseErrorResponse(error);
-    expect(result).toContain('restricted to specific platforms');
+    expect(result).toContain('restricted to specific agents');
   });
 
   it('handles VALIDATION_ERROR with details', () => {

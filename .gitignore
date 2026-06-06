@@ -8,3 +8,6 @@ dist/
 coverage/
 .nyc_output/
 .last_build
+.claude/skills/
+.agents/skills/
+.local/

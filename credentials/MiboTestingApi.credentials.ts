@@ -9,7 +9,7 @@ import type {
 export class MiboTestingApi implements ICredentialType {
   name = 'miboTestingApi';
   displayName = 'Mibo Testing API';
-  documentationUrl = 'https://docs.mibo-testing.com/integrations/n8n';
+  documentationUrl = 'https://docs.mibo-ai.com/n8n-node/setup';
   icon? = 'file:mibo-testing.svg' as Icon;
   properties: INodeProperties[] = [
     {

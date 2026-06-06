@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "skills": {
+    "git": {
+      "source": "/Users/fernando.mirabile/projects/mios/mibo-testing-n8n-node/skills",
+      "sourceType": "local",
+      "computedHash": "8f3ddabacbaa5925d91322dae208e4dc5a461c9fedae64e896e6cd067355a3e9"
+    },
+    "n8n-node": {
+      "source": "/Users/fernando.mirabile/projects/mios/mibo-testing-n8n-node/skills",
+      "sourceType": "local",
+      "computedHash": "d493f798552133a55236331abf3cccc75cf0ef6b51c5238cacd2f8ad9d9b5848"
+    },
+    "release-flow": {
+      "source": "/Users/fernando.mirabile/projects/mios/mibo-testing-n8n-node/skills",
+      "sourceType": "local",
+      "computedHash": "ae63d7a49d843ca2e83413b0692e4ef9de5743c396d3166822e3b41c7db18e0b"
+    },
+    "vitest-n8n": {
+      "source": "/Users/fernando.mirabile/projects/mios/mibo-testing-n8n-node/skills",
+      "sourceType": "local",
+      "computedHash": "a0ddfe9f46ae0576193c470e6dcb9eda37c4c42961a15ec9dbed1e69e1cb88ab"
+    }
+  }
+}

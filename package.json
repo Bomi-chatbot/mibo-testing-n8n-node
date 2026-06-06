@@ -14,7 +14,7 @@
   ],
   "author": {
     "name": "Mibo Testing",
-    "email": "support@mibo-testing.com"
+    "email": "support@mibo-ai.com"
   },
   "repository": {
     "type": "git",
@@ -32,6 +32,7 @@
     "watch": "tsc --watch",
     "check": "biome check nodes credentials",
     "check:fix": "biome check --fix nodes credentials",
+    "skills:sync": "skills add ./skills -y",
     "prepublishOnly": "pnpm run build",
     "------- DEV -------": "echo 'Development commands'",
     "dev": "node scripts/dev.mjs",
@@ -65,6 +66,7 @@
     "n8n-workflow": "*",
     "pino": "^9.0.0",
     "pino-pretty": "^13.0.0",
+    "skills": "^1.5.7",
     "typescript": "^5.7.0",
     "vitest": "^4.0.18"
   },
