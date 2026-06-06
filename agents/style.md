@@ -40,7 +40,7 @@ Never hand-format. If Biome disagrees with you, Biome wins.
 
 - Files: `PascalCase.node.ts` / `PascalCase.credentials.ts` for n8n classes. `camelCase.ts` for utilities and builders.
 - Functions: `camelCase`, verb-first (`buildTracePayload`, `sendTrace`, `parseHeaderValue`).
-- Constants: `SCREAMING_SNAKE_CASE` (`GZIP_THRESHOLD_BYTES`, `MAX_PAYLOAD_SIZE_MB`).
+- Constants: `SCREAMING_SNAKE_CASE` (`MAX_PAYLOAD_SIZE_BYTES`, `DEFAULT_TIMEOUT_SECONDS`).
 - Types and interfaces: `PascalCase` (`TracePayload`, `MiboSuccessResponse`). Don't prefix interfaces with `I` except for the n8n types that already use that convention.
 - Test files mirror the source: `foo.ts` → `tests/foo.test.ts`.
 

@@ -4,20 +4,18 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, '..');
-const srcDir = join(rootDir, 'nodes');
-const distDir = join(rootDir, 'dist', 'nodes');
 
-function copyIcons(dir, relativePath = '') {
+function copyIcons(srcRoot, distRoot, dir = srcRoot, relativePath = '') {
   const entries = readdirSync(dir);
-  
+
   for (const entry of entries) {
     const srcPath = join(dir, entry);
     const stat = statSync(srcPath);
-    
+
     if (stat.isDirectory()) {
-      copyIcons(srcPath, join(relativePath, entry));
+      copyIcons(srcRoot, distRoot, srcPath, join(relativePath, entry));
     } else if (entry.endsWith('.svg') || entry.endsWith('.png')) {
-      const destPath = join(distDir, relativePath, entry);
+      const destPath = join(distRoot, relativePath, entry);
       mkdirSync(dirname(destPath), { recursive: true });
       copyFileSync(srcPath, destPath);
       console.log(`Copied: ${join(relativePath, entry)}`);
@@ -26,5 +24,6 @@ function copyIcons(dir, relativePath = '') {
 }
 
 console.log('Copying icons to dist...');
-copyIcons(srcDir);
+copyIcons(join(rootDir, 'nodes'), join(rootDir, 'dist', 'nodes'));
+copyIcons(join(rootDir, 'credentials'), join(rootDir, 'dist', 'credentials'));
 console.log('Done!');

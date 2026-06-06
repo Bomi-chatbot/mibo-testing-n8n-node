@@ -45,11 +45,11 @@ Override only the fields the test needs. Reset `vi` state between tests if mocks
 1. **Golden path** for every exported function and `execute()`.
 2. **At least one failure case** per public surface:
    - Mibo API error response (`mibo-client`)
-   - Oversized payload triggering gzip
+   - Oversized payload (over `MAX_PAYLOAD_SIZE_BYTES`)
    - Missing required parameter / credential field
    - Network timeout
 3. **Passthrough invariant** (`node.test.ts`): input fields survive unchanged; `_miboTrace` is appended.
-4. **Compression boundary** (`mibo-client.test.ts`): payload above `GZIP_THRESHOLD_BYTES` → `Content-Encoding: gzip` + `Content-Type: application/octet-stream`; below → plain JSON.
+4. **Payload size warning** (`mibo-client.test.ts`): payload above 80% of `MAX_PAYLOAD_SIZE_BYTES` surfaces a warning in `_miboTrace`; the request body is always plain JSON.
 5. **`continueOnFail()`**: when enabled, errors emit an item with `error` instead of throwing.
 6. **`x-request-id` propagation** from webhook headers when not explicitly set.
 

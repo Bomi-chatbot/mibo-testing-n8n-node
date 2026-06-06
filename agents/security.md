@@ -42,12 +42,10 @@ The node observes a workflow; it does **not** participate in it.
 - **Identity is HTTP-header-only.** `externalId` is read by the API from the `x-request-id` request header — never from the body. Don't add `externalId` (or any identity field) back into the payload; clients that disagree about identity create silent duplicate / overwrite bugs.
 - `span.name` is the **user-facing display label** (n8n node display name), never the technical id. Mibo `node_call` assertions match against this string verbatim.
 
-## Compression boundary
+## Payload size
 
-- Payloads above `GZIP_THRESHOLD_BYTES` (5 MB) are gzipped with `Content-Encoding: gzip` and `Content-Type: application/octet-stream`.
-- The threshold is in `constants.ts`. Don't hardcode the number elsewhere.
-- Below the threshold, send plain JSON.
-- The boundary is covered by tests — keep them passing.
+- The API hard limit is 10 MB (`MAX_PAYLOAD_SIZE_BYTES` in `constants.ts`). The node emits a warning in `_miboTrace` when the payload passes 80% of that.
+- All requests go as plain JSON — **no gzip / Content-Encoding / Content-Type negotiation**. Don't reintroduce client-side compression: importing `node:zlib` (or any other Node built-in beyond what's already in use) is blocked by `@n8n/community-nodes/no-restricted-imports` and disqualifies the package from Verified status. See `agents/n8n-guidelines.md`.
 
 ## Error surface
 

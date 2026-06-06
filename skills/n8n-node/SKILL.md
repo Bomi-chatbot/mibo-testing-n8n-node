@@ -70,7 +70,7 @@ The API `POST /public/traces` is a server-side contract — treat it as a public
 - `parent_span_id` is wired via `utils.buildParentMap` (child → first source per output) and `builders.resolveCapturedAncestor` walks past filtered/excluded nodes so the visible tree stays connected.
 - Identity is HTTP-header-only: pass `requestId` to `sendTrace`, which sets `x-request-id`. The API reads `externalId` from that header, never from the body — do not add an `externalId` field back.
 
-Compression threshold lives in `constants.ts` as `GZIP_THRESHOLD_BYTES` (5 MB). Above the threshold the request is gzipped with `Content-Encoding: gzip` and `Content-Type: application/octet-stream`.
+All trace POSTs go as plain JSON. There is **no client-side compression** — `node:zlib` and other Node built-ins are blocked by the Verified Community Node scanner. The hard payload limit is `MAX_PAYLOAD_SIZE_BYTES` (10 MB) in `constants.ts`; the node warns in `_miboTrace` past 80%.
 
 ## Before finishing
 
