@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "node",
+  "packages": {
+    ".": {
+      "package-name": "@mibo-ai/n8n-nodes-mibo-testing",
+      "changelog-path": "CHANGELOG.md",
+      "include-v-in-tag": true,
+      "draft": false,
+      "prerelease": false
+    }
+  }
+}

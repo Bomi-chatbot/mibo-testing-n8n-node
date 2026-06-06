@@ -1,4 +1,4 @@
-import type { TracePayload } from '../nodes/MiboTesting/types';
+import type { CanonicalTracePayload } from '../nodes/MiboTesting/types';
 
 import { describe, expect, it } from 'vitest';
 
@@ -43,7 +43,7 @@ describe('parseErrorResponse', () => {
       },
     };
     const result = parseErrorResponse(error);
-    expect(result).toContain('Could not determine the target platform');
+    expect(result).toContain('Could not determine the target agent');
   });
 
   it('handles PLATFORM_NOT_FOUND with restrictions', () => {
@@ -58,7 +58,7 @@ describe('parseErrorResponse', () => {
       },
     };
     const result = parseErrorResponse(error);
-    expect(result).toContain('restricted to specific platforms');
+    expect(result).toContain('restricted to specific agents');
   });
 
   it('handles VALIDATION_ERROR with details', () => {
@@ -112,8 +112,8 @@ describe('parseErrorResponse', () => {
 
 describe('calculatePayloadSize', () => {
   it('returns correct byte size', () => {
-    const payload: TracePayload = {
-      data: { input: [{ hello: 'world' }] },
+    const payload: CanonicalTracePayload = {
+      spans: [{ span_id: 's1', parent_span_id: null, name: 'Webhook', attributes: {} }],
       metadata: {},
       externalMetadata: { workflowId: 'wf-1' },
     };
@@ -122,8 +122,8 @@ describe('calculatePayloadSize', () => {
   });
 
   it('handles unicode correctly', () => {
-    const payload: TracePayload = {
-      data: { input: [{ text: 'héllo wörld' }] },
+    const payload: CanonicalTracePayload = {
+      spans: [{ span_id: 's1', parent_span_id: null, name: 'héllo wörld', attributes: {} }],
       metadata: {},
       externalMetadata: { workflowId: 'wf-1' },
     };

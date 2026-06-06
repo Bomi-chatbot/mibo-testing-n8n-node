@@ -1,0 +1,79 @@
+name: NPM token expiry check
+
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Compute days remaining
+        id: check
+        env:
+          EXPIRES: ${{ vars.NPM_TOKEN_EXPIRES }}
+        run: |
+          if [ -z "$EXPIRES" ]; then
+            echo "NPM_TOKEN_EXPIRES variable not set — configure it in repo Settings → Variables."
+            exit 1
+          fi
+          NOW_EPOCH=$(date -u +%s)
+          EXP_EPOCH=$(date -u -d "$EXPIRES" +%s)
+          DAYS=$(( (EXP_EPOCH - NOW_EPOCH) / 86400 ))
+          echo "days=$DAYS" >> "$GITHUB_OUTPUT"
+          echo "expires=$EXPIRES" >> "$GITHUB_OUTPUT"
+          echo "NPM_TOKEN expires on $EXPIRES — $DAYS days remaining."
+
+      - name: Open issue if expiring soon
+        if: steps.check.outputs.days <= 30
+        uses: actions/github-script@v7
+        env:
+          DAYS: ${{ steps.check.outputs.days }}
+          EXPIRES: ${{ steps.check.outputs.expires }}
+        with:
+          script: |
+            const days = Number(process.env.DAYS);
+            const expires = process.env.EXPIRES;
+            const title = `Rotate NPM_TOKEN (expires ${expires}, ${days} days left)`;
+
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'npm-token-rotation',
+              per_page: 5,
+            });
+            if (existing.data.length > 0) {
+              core.info(`Open rotation issue already exists: #${existing.data[0].number}`);
+              return;
+            }
+
+            const body = [
+              `\`NPM_TOKEN\` is set to expire on **${expires}** (${days} days remaining).`,
+              '',
+              'Rotate before expiry to avoid a failed publish:',
+              '',
+              '1. Generate a new granular token on npm with the same scope.',
+              '2. Overwrite the value of `NPM_TOKEN` in repo Settings → Secrets.',
+              '3. Update the `NPM_TOKEN_EXPIRES` variable to the new expiration date.',
+              '4. Revoke the old token on npm.',
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body,
+              labels: ['npm-token-rotation'],
+            });
+
+      - name: Fail run if already expired
+        if: steps.check.outputs.days <= 0
+        run: |
+          echo "::error::NPM_TOKEN expired on ${{ steps.check.outputs.expires }} — publishes will fail until rotated."
+          exit 1

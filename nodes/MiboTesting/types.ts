@@ -35,25 +35,14 @@ export interface WorkflowNode {
   type: string;
 }
 
-export interface NodeDataInput {
-  _notExecuted?: boolean;
-  items: IDataObject[];
-  nodeName: string;
-  parameters?: IDataObject;
-  type?: string;
-}
+export type WorkflowConnections = Record<
+  string,
+  Record<string, Array<Array<{ node: string; type?: string; index?: number }>>>
+>;
 
-export interface TracePayload {
-  data: {
-    input: IDataObject[];
-    nodes?: NodeDataInput[];
-  };
-  externalId?: string;
-  externalMetadata: {
-    workflowId: string;
-  };
-  metadata: IDataObject;
-  platformId?: string;
+export interface FetchedWorkflow {
+  nodes: WorkflowNode[];
+  connections: WorkflowConnections;
 }
 
 export interface NodeOptions {
@@ -66,23 +55,26 @@ export interface MetadataFields {
   version?: string;
 }
 
-export interface OptimizedNodeData {
-  output: IDataObject | IDataObject[];
-  parameters?: IDataObject;
-  status: 'success' | 'skipped';
-  type: string;
+export interface CanonicalSpan {
+  span_id: string;
+  parent_span_id: string | null;
+  name: string;
+  attributes: Record<string, unknown>;
 }
 
-export interface OptimizedTraceMetadata {
-  [key: string]: unknown;
-  timestamp: string;
-  workflow_id: string;
-  workflow_name: string;
-}
-
-export interface OptimizedTracePayload {
-  data: Record<string, OptimizedNodeData>;
-  metadata: OptimizedTraceMetadata;
+export interface CanonicalTracePayload {
+  spans: CanonicalSpan[];
+  externalMetadata: {
+    workflowId: string;
+  };
+  metadata: IDataObject;
   platformId?: string;
-  status: 'success' | 'partial';
+}
+
+export interface SpanSource {
+  nodeName: string;
+  type: string;
+  status: 'success' | 'skipped';
+  items: IDataObject[];
+  parameters?: IDataObject;
 }

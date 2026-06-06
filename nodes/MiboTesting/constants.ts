@@ -1,4 +1,5 @@
 export const DEFAULT_SERVER_URL = 'https://api.mibo-ai.com';
+export const DOCS_URL = 'https://docs.mibo-ai.com/n8n-node/setup/';
 export const DEFAULT_TIMEOUT_SECONDS = 30;
 export const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -29,9 +30,9 @@ export const ERROR_CODES = {
   VALIDATION_ERROR: 'The request body failed validation.',
   PLATFORM_NOT_FOUND: {
     withRestrictions:
-      'The API key is restricted to specific platforms. Verify that the platformId matches one of the allowed platforms.',
+      'The API key is restricted to specific agents. Verify that the agentId matches one of the allowed agents.',
     withoutRestrictions:
-      'Could not determine the target platform. Send a platformId in the body, or restrict the API key to a single platform.',
+      'Could not determine the target agent. Send an agentId in the body, or restrict the API key to a single agent.',
   },
   AUTH_ERROR: 'Internal error while validating the API key. Contact support.',
   INTERNAL_SERVER_ERROR: 'Unexpected server error. Contact support if it persists.',
