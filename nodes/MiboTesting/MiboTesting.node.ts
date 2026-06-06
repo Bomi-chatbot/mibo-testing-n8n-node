@@ -9,9 +9,9 @@ import { NodeOperationError } from 'n8n-workflow';
 import { buildCanonicalTracePayload, buildMetadata } from './builders';
 import {
   AUTO_EXCLUDED_NODE_TYPES,
+  DEFAULT_SERVER_URL,
   DEFAULT_TIMEOUT_SECONDS,
   DOCS_URL,
-  getServerUrl,
 } from './constants';
 import {
   calculatePayloadSize,
@@ -57,7 +57,7 @@ export class MiboTesting implements INodeType {
         default: '',
         description:
           'The unique identifier for your agent in Mibo Testing (UUID format). Leave empty if the API key is already scoped to a single agent.',
-        placeholder: 'e.g., 550e8400-e29b-41d4-a716-446655440000',
+        placeholder: 'e.g. 550e8400-e29b-41d4-a716-446655440000',
       },
       {
         displayName: 'Request ID',
@@ -256,7 +256,7 @@ export class MiboTesting implements INodeType {
       parentMap,
     );
 
-    const serverUrl = normalizeServerUrl(getServerUrl());
+    const serverUrl = normalizeServerUrl(DEFAULT_SERVER_URL);
     const timeout = (options.timeout || DEFAULT_TIMEOUT_SECONDS) * 1000;
 
     const payloadSize = calculatePayloadSize(tracePayload);

@@ -5,7 +5,6 @@ export const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-7][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const MAX_PAYLOAD_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
 export const MAX_PAYLOAD_SIZE_MB = 10;
-export const GZIP_THRESHOLD_BYTES = 5 * 1024 * 1024; // 5MB - compress payloads larger than this
 
 export const AUTO_EXCLUDED_NODE_TYPES = [
   'n8n-nodes-base.stickyNote',
@@ -17,10 +16,6 @@ export const AUTO_EXCLUDED_NODE_TYPES = [
   'n8n-nodes-base.manualTrigger',
   'CUSTOM.miboTesting',
 ];
-
-export function getServerUrl(): string {
-  return process.env.MIBO_SERVER_URL || DEFAULT_SERVER_URL;
-}
 
 export const ERROR_CODES = {
   MISSING_API_KEY:

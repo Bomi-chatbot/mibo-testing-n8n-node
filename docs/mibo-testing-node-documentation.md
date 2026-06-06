@@ -261,7 +261,7 @@ The optimized format removes:
 - Connection metadata
 - Credential details
 
-**Automatic compression**: Payloads larger than 5MB are automatically gzip-compressed before sending. The maximum payload size accepted by the API is 10MB. The node warns when the payload exceeds 80% of this limit.
+**Payload size**: The maximum payload size accepted by the API is 10MB. The node warns when the payload exceeds 80% of this limit.
 
 ---
 
@@ -273,7 +273,7 @@ The node sends traces to `POST /public/traces` using the `x-api-key` header for 
 
 **Request Headers:**
 - `x-api-key` (required) — your Mibo Testing API key
-- `Content-Type: application/json` (or `application/octet-stream` when gzip-compressed)
+- `Content-Type: application/json`
 - `x-request-id` (optional) — for trace correlation with active testing
 
 **Response Codes:**

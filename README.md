@@ -8,7 +8,6 @@ n8n community node for **Mibo Testing** - a platform for semantic and procedural
 - **Automatic workflow capture**: discovers every executed node via the n8n API (when credentials carry an n8n API key) or via an upstream `Get Workflow` node. Auto-utility nodes (`stickyNote`, `noOp`, `wait`, …) are excluded.
 - **Parent linking**: `parent_span_id` follows the n8n connection graph so traces render as the workflow structure.
 - **Request-id correlation**: sets `x-request-id` from the manual override, then from incoming webhook headers, falling back to the n8n execution id.
-- **Gzip on large payloads**: payloads above 5 MB are compressed before POST.
 - **Passthrough**: input items pass through unchanged; only a `_miboTrace` summary is appended.
 
 ## Installation

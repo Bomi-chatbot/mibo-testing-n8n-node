@@ -24,21 +24,7 @@ export function normalizeServerUrl(url: string): string {
 }
 
 export function resolveN8nBaseUrl(credentialValue: string): string {
-  if (credentialValue) {
-    return credentialValue;
-  }
-
-  let base: string;
-  if (process.env.WEBHOOK_URL) {
-    base = process.env.WEBHOOK_URL.replace(/\/+$/, '');
-  } else {
-    const protocol = process.env.N8N_PROTOCOL || 'http';
-    const host = process.env.N8N_HOST || 'localhost';
-    const port = process.env.N8N_PORT || '5678';
-    base = `${protocol}://${host}:${port}`;
-  }
-
-  return `${base}/api/v1`;
+  return credentialValue || 'http://localhost:5678/api/v1';
 }
 
 export async function fetchWorkflow(
