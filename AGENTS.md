@@ -9,6 +9,7 @@ Setup and commands live in [README.md](./README.md). This file is _rules_ and th
 - Git operations (branch, commit, PR, conflicts, revert) → [agents/git.md](./agents/git.md)
 - Code style (Biome, TypeScript conventions, naming, comments) → [agents/style.md](./agents/style.md)
 - Security & correctness invariants (passthrough, HTTP helpers, supply chain, secret hygiene, payload contract) → [agents/security.md](./agents/security.md)
+- n8n community node rules (verification, UX, copy, casing, allowed APIs) → [agents/n8n-guidelines.md](./agents/n8n-guidelines.md)
 
 Touching multiple topics? Load every relevant file. The per-topic files contain only what's specific to that topic; the rules below apply everywhere.
 

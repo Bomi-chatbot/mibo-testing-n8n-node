@@ -33,6 +33,8 @@
     "watch": "tsc --watch",
     "check": "biome check nodes credentials && eslint package.json nodes credentials --ext .ts,.json",
     "check:fix": "biome check --fix nodes credentials && eslint package.json nodes credentials --ext .ts,.json --fix",
+    "lint": "pnpm run check",
+    "lint:fix": "pnpm run check:fix",
     "lint:n8n": "eslint package.json nodes credentials --ext .ts,.json",
     "test": "vitest run",
     "test:watch": "vitest --watch",
@@ -59,6 +61,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.6",
+    "@n8n/node-cli": "^0.33.1",
     "@types/node": "^22.0.0",
     "@typescript-eslint/parser": "^8.60.1",
     "chokidar": "^4.0.0",
