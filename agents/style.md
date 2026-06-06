@@ -4,7 +4,11 @@ Load when writing or editing any TypeScript file (`nodes/**`, `credentials/**`, 
 
 ## Formatting
 
-Biome owns formatting and lint. Run `pnpm run check` to verify, `pnpm run check:fix` to apply.
+Biome owns formatting and most lint. Run `pnpm run check` to verify, `pnpm run check:fix` to apply.
+
+`pnpm run check` also runs `eslint-plugin-n8n-nodes-base` (config in `.eslintrc.js`) — it's the *only* ESLint use in the repo and exists because Biome can't express n8n's community-node rules (display names, parameter descriptions, credential URLs, etc.). When in doubt about whether a rule is Biome or the n8n plugin, check the error prefix: `lint/*` is Biome, `n8n-nodes-base/*` is the plugin.
+
+In the node class description (`INodeTypeDescription`), use **string literals** for `inputs` / `outputs` (e.g. `['main']`), not the `NodeConnectionTypes` enum — the n8n linter enforces this to match the canonical form in n8n-nodes-base.
 
 - Single quotes for strings.
 - Trailing commas.

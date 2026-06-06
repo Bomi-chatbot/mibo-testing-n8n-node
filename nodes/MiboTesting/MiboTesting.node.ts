@@ -5,7 +5,7 @@ import type {
   INodeType,
   INodeTypeDescription,
 } from 'n8n-workflow';
-import { NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
+import { NodeOperationError } from 'n8n-workflow';
 import { buildCanonicalTracePayload, buildMetadata } from './builders';
 import {
   AUTO_EXCLUDED_NODE_TYPES,
@@ -41,8 +41,8 @@ export class MiboTesting implements INodeType {
     defaults: {
       name: 'Mibo Testing',
     },
-    inputs: [NodeConnectionTypes.Main],
-    outputs: [NodeConnectionTypes.Main],
+    inputs: ['main'],
+    outputs: ['main'],
     credentials: [
       {
         name: 'miboTestingApi',
@@ -65,8 +65,8 @@ export class MiboTesting implements INodeType {
         type: 'string',
         default: '',
         description:
-          'Override the x-request-id used to correlate this trace. By default the node uses the x-request-id from incoming webhook headers, then falls back to the n8n execution id.',
-        placeholder: '={{ $("Webhook").item.json.headers["x-request-id"] }}',
+          'Override the x-request-ID used to correlate this trace. By default the node uses the x-request-ID from incoming webhook headers, then falls back to the n8n execution ID.',
+        placeholder: '={{ $("Webhook").item.json.headers["x-request-ID"] }}',
       },
       {
         displayName: 'Include Metadata',
