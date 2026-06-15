@@ -14,7 +14,6 @@ export const AUTO_EXCLUDED_NODE_TYPES = [
   'n8n-nodes-base.wait',
   'n8n-nodes-base.start',
   'n8n-nodes-base.manualTrigger',
-  'CUSTOM.miboTesting',
 ];
 
 export const ERROR_CODES = {

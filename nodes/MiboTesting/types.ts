@@ -78,3 +78,12 @@ export interface SpanSource {
   items: IDataObject[];
   parameters?: IDataObject;
 }
+
+export interface ToolCall {
+  /** Tool name as the agent called it (`action.tool`). */
+  name: string;
+  /** Parsed arguments, or undefined when n8n didn't expose them (issue #23501). */
+  arguments?: unknown;
+  /** Display name of the agent node that called it — the parent span. */
+  agentNodeName: string;
+}

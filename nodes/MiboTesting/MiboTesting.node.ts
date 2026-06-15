@@ -6,7 +6,7 @@ import type {
   INodeTypeDescription,
 } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
-import { buildCanonicalTracePayload, buildMetadata } from './builders';
+import { buildCanonicalTracePayload, buildMetadata, extractToolCalls } from './builders';
 import {
   AUTO_EXCLUDED_NODE_TYPES,
   DEFAULT_SERVER_URL,
@@ -22,7 +22,10 @@ import {
 } from './mibo-client';
 import type { NodeOptions, SpanSource } from './types';
 import {
+  agentsMissingIntermediateSteps,
   buildParentMap,
+  buildSubNodeNames,
+  buildToolNodeNames,
   findRequestIdInData,
   isValidUUID,
   normalizeServerUrl,
@@ -181,8 +184,18 @@ export class MiboTesting implements INodeType {
     );
 
     const proxy = this.getWorkflowDataProxy(0);
-
-    const capturedNodes = workflowNodes.filter((n) => !AUTO_EXCLUDED_NODE_TYPES.includes(n.type));
+    // Excluded from node spans: the Mibo Testing node itself, and AI tools (a tool is not
+    // a node — it appears only as a real tool-call from intermediateSteps). Model/memory
+    // sub-nodes stay as output-less spans.
+    const selfNodeName = this.getNode().name;
+    const subNodeNames = buildSubNodeNames(connections);
+    const toolNodeNames = buildToolNodeNames(connections);
+    const capturedNodes = workflowNodes.filter(
+      (n) =>
+        n.name !== selfNodeName &&
+        !toolNodeNames.has(n.name) &&
+        !AUTO_EXCLUDED_NODE_TYPES.includes(n.type),
+    );
     const sources: SpanSource[] = [];
     const nodesNotExecuted: string[] = [];
     let extractedRequestId: string | undefined;
@@ -200,44 +213,48 @@ export class MiboTesting implements INodeType {
           ? wfNode.parameters
           : undefined;
 
+      const isSubNode = subNodeNames.has(nodeName);
+
       let captured = false;
-      try {
-        const nodeItems = proxy.$items(nodeName);
-        if (nodeItems && nodeItems.length > 0) {
-          const itemsJson: IDataObject[] = [];
-          for (const ni of nodeItems) {
-            const itemJson = ni.json as IDataObject;
-            itemsJson.push(itemJson);
-            if (!extractedRequestId) {
-              extractedRequestId = findRequestIdInData(itemJson);
+      // Sub-nodes never expose output via $items — skip the lookup, emit them below.
+      if (!isSubNode) {
+        try {
+          const nodeItems = proxy.$items(nodeName);
+          if (nodeItems && nodeItems.length > 0) {
+            const itemsJson: IDataObject[] = [];
+            for (const ni of nodeItems) {
+              const itemJson = ni.json as IDataObject;
+              itemsJson.push(itemJson);
+              if (!extractedRequestId) {
+                extractedRequestId = findRequestIdInData(itemJson);
+              }
             }
+            sources.push({
+              nodeName,
+              type,
+              status: 'success',
+              items: itemsJson,
+              parameters,
+            });
+            captured = true;
           }
-          sources.push({
-            nodeName,
-            type,
-            status: 'success',
-            items: itemsJson,
-            parameters,
-          });
-          captured = true;
+        } catch {
+          // node not reachable in this execution branch — fall through below
         }
-      } catch {
-        // node not reachable in this execution branch — fall through to skipped
       }
 
       if (!captured) {
-        nodesNotExecuted.push(nodeName);
-        sources.push({
-          nodeName,
-          type,
-          status: 'skipped',
-          items: [],
-          parameters,
-        });
+        if (isSubNode) {
+          // Ran inside its parent: success, no output, not an alarm.
+          sources.push({ nodeName, type, status: 'success', items: [], parameters });
+        } else {
+          nodesNotExecuted.push(nodeName);
+          sources.push({ nodeName, type, status: 'skipped', items: [], parameters });
+        }
       }
     }
 
-    if (sources.filter((s) => s.status === 'success').length === 0) {
+    if (sources.filter((s) => s.items.length > 0).length === 0) {
       throw new NodeOperationError(this.getNode(), 'No executed nodes were captured', {
         description: `None of the workflow nodes had executed data when this node ran. Make sure the Mibo Testing node runs after the steps you want to capture. See ${DOCS_URL}.`,
       });
@@ -247,6 +264,7 @@ export class MiboTesting implements INodeType {
     const requestId = manualRequestId || extractedRequestId || this.getExecutionId() || undefined;
 
     const parentMap = buildParentMap(connections);
+    const toolCalls = extractToolCalls(sources);
 
     const tracePayload = buildCanonicalTracePayload(
       sources,
@@ -254,7 +272,12 @@ export class MiboTesting implements INodeType {
       metadata,
       platformId,
       parentMap,
+      toolCalls,
     );
+
+    // Agents that have tools wired but won't expose them (returnIntermediateSteps off).
+    // Distinct from an agent that simply didn't call a tool this run.
+    const agentsNeedingSteps = agentsMissingIntermediateSteps(connections, workflowNodes);
 
     const serverUrl = normalizeServerUrl(DEFAULT_SERVER_URL);
     const timeout = (options.timeout || DEFAULT_TIMEOUT_SECONDS) * 1000;
@@ -280,7 +303,8 @@ export class MiboTesting implements INodeType {
           platformId: platformId || 'resolved-from-api-key',
           requestId: requestId || null,
           timestamp,
-          spansSent: sources.filter((s) => s.status === 'success').length,
+          spansSent: sources.filter((s) => s.items.length > 0).length,
+          toolCallsSent: toolCalls.length,
           payloadSize: payloadSizeFormatted,
         };
 
@@ -291,6 +315,10 @@ export class MiboTesting implements INodeType {
         if (nodesNotExecuted.length > 0) {
           traceInfo.warning = `Some nodes did not execute in this workflow branch: ${nodesNotExecuted.join(', ')}`;
           traceInfo.nodesNotExecuted = nodesNotExecuted;
+        }
+
+        if (agentsNeedingSteps.length > 0) {
+          traceInfo.toolCallsWarning = `Turn on 'Return Intermediate Steps' on these agent nodes so tool-call assertions can see which tools ran: ${agentsNeedingSteps.join(', ')}.`;
         }
 
         returnData.push({

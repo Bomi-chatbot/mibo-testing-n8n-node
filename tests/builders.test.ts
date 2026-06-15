@@ -3,7 +3,11 @@ import type { IExecuteFunctions, INode } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
 import { describe, expect, it } from 'vitest';
 
-import { buildCanonicalTracePayload, buildMetadata } from '../nodes/MiboTesting/builders';
+import {
+  buildCanonicalTracePayload,
+  buildMetadata,
+  extractToolCalls,
+} from '../nodes/MiboTesting/builders';
 import type { SpanSource } from '../nodes/MiboTesting/types';
 
 const mockNode = {
@@ -165,6 +169,28 @@ describe('buildCanonicalTracePayload', () => {
     expect(span.attributes['n8n.node.output']).toBeUndefined();
   });
 
+  it('emits tool-call child spans parented to their agent', () => {
+    const sources: SpanSource[] = [
+      { nodeName: 'AI Agent', type: '@n8n/n8n-nodes-langchain.agent', status: 'success', items: [{ output: 'ok' }] },
+    ];
+    const toolCalls = [
+      { name: 'search', arguments: { q: 'rsi' }, agentNodeName: 'AI Agent' },
+      { name: 'no_args_tool', agentNodeName: 'AI Agent' },
+    ];
+    const payload = buildCanonicalTracePayload(sources, 'wf-1', {}, '', {}, toolCalls);
+
+    const agent = payload.spans.find((s) => s.name === 'AI Agent');
+    const search = payload.spans.find((s) => s.name === 'search');
+    expect(search?.attributes['gen_ai.tool.name']).toBe('search');
+    expect(search?.attributes['gen_ai.tool.call.arguments']).toBe('{"q":"rsi"}');
+    expect(search?.parent_span_id).toBe(agent?.span_id);
+
+    // No arguments resolved → the attribute is omitted, the call still emitted.
+    const noArgs = payload.spans.find((s) => s.name === 'no_args_tool');
+    expect(noArgs?.attributes['gen_ai.tool.name']).toBe('no_args_tool');
+    expect(noArgs?.attributes['gen_ai.tool.call.arguments']).toBeUndefined();
+  });
+
   it('serializes BigInt parameters without throwing', () => {
     const withBigint: SpanSource[] = [
       {
@@ -223,5 +249,119 @@ describe('buildCanonicalTracePayload', () => {
     ];
     const span = buildCanonicalTracePayload(odd, 'wf-1', {}, '', {}).spans[0];
     expect(span.name).toBe('My Custom AI Agent (v2)');
+  });
+});
+
+describe('extractToolCalls', () => {
+  const agentSource = (intermediateSteps: unknown): SpanSource => ({
+    nodeName: 'AI Agent',
+    type: '@n8n/n8n-nodes-langchain.agent',
+    status: 'success',
+    items: [{ output: 'done', intermediateSteps }] as SpanSource['items'],
+  });
+
+  it('pulls tool name and toolInput from each step', () => {
+    const calls = extractToolCalls([
+      agentSource([{ action: { tool: 'search', toolInput: { q: 'rsi' } }, observation: 'x' }]),
+    ]);
+    expect(calls).toEqual([{ name: 'search', arguments: { q: 'rsi' }, agentNodeName: 'AI Agent' }]);
+  });
+
+  it('falls back to messageLog tool_calls args when toolInput is empty (issue #23501)', () => {
+    const calls = extractToolCalls([
+      agentSource([
+        {
+          action: {
+            tool: 'Calculator',
+            toolInput: {},
+            toolCallId: 'call_1',
+            messageLog: [{ tool_calls: [{ id: 'call_1', args: { input: '5*343' } }] }],
+          },
+          observation: '1715',
+        },
+      ]),
+    ]);
+    expect(calls[0].arguments).toEqual({ input: '5*343' });
+  });
+
+  it('emits the call with undefined arguments when none can be resolved', () => {
+    const calls = extractToolCalls([
+      agentSource([{ action: { tool: 'ping', toolInput: {} }, observation: 'pong' }]),
+    ]);
+    expect(calls).toEqual([{ name: 'ping', arguments: undefined, agentNodeName: 'AI Agent' }]);
+  });
+
+  // Verbatim shape captured from a real n8n run (Date & Time tool, exec #5): toolInput
+  // arrives empty (issue #23501) and the args live in messageLog[].tool_calls[].args,
+  // keyed by toolCallId. The tool name is n8n's sanitized "Date_Time", not the node's
+  // display name "Date & Time".
+  it('parses the real n8n intermediateSteps shape, recovering args from messageLog', () => {
+    const realStep = {
+      action: {
+        tool: 'Date_Time',
+        toolInput: {},
+        log: 'Calling Date_Time with input: {"id":"68dee6d5-5183-42bc-a5c6-9280ffe5daf8"}',
+        messageLog: [
+          {
+            lc_serializable: true,
+            content: 'Calling Date_Time with input: {"id":"68dee6d5-5183-42bc-a5c6-9280ffe5daf8"}',
+            type: 'ai',
+            tool_calls: [
+              {
+                id: '68dee6d5-5183-42bc-a5c6-9280ffe5daf8',
+                name: 'Date_Time',
+                args: { id: '68dee6d5-5183-42bc-a5c6-9280ffe5daf8' },
+                type: 'tool_call',
+              },
+            ],
+            invalid_tool_calls: [],
+          },
+        ],
+        toolCallId: '68dee6d5-5183-42bc-a5c6-9280ffe5daf8',
+        type: 'tool_call',
+      },
+      observation: '[{"currentDate":"2026-06-15T16:48:38.986-03:00"}]',
+    };
+    expect(extractToolCalls([agentSource([realStep])])).toEqual([
+      {
+        name: 'Date_Time',
+        arguments: { id: '68dee6d5-5183-42bc-a5c6-9280ffe5daf8' },
+        agentNodeName: 'AI Agent',
+      },
+    ]);
+  });
+
+  it('matches the right tool_call by toolCallId when several are present', () => {
+    const action = {
+      tool: 'second',
+      toolInput: {},
+      toolCallId: 'id-2',
+      messageLog: [
+        {
+          tool_calls: [
+            { id: 'id-1', args: { a: 1 } },
+            { id: 'id-2', args: { b: 2 } },
+          ],
+        },
+      ],
+    };
+    const calls = extractToolCalls([agentSource([{ action, observation: 'x' }])]);
+    expect(calls[0].arguments).toEqual({ b: 2 });
+  });
+
+  it('ignores sources without intermediateSteps and skipped sources', () => {
+    const skipped: SpanSource = {
+      nodeName: 'AI Agent',
+      type: 'agent',
+      status: 'skipped',
+      items: [],
+    };
+    const plain: SpanSource = {
+      nodeName: 'HTTP Request',
+      type: 'http',
+      status: 'success',
+      items: [{ ok: true }],
+    };
+    expect(extractToolCalls([skipped, plain])).toEqual([]);
   });
 });

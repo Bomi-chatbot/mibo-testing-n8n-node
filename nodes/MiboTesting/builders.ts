@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import type { IDataObject, IExecuteFunctions } from 'n8n-workflow';
 import { NodeOperationError } from 'n8n-workflow';
-import type { CanonicalSpan, CanonicalTracePayload, MetadataFields, SpanSource } from './types';
+import type {
+  CanonicalSpan,
+  CanonicalTracePayload,
+  MetadataFields,
+  SpanSource,
+  ToolCall,
+} from './types';
 import { safeStringify } from './utils';
 
 export function buildMetadata(
@@ -97,12 +103,67 @@ function buildSpan(
   };
 }
 
+/**
+ * Resolve a tool call's arguments, working around n8n issue #23501 where `toolInput`
+ * can be empty while the real args live in `messageLog[].tool_calls[].args`.
+ */
+function resolveToolArguments(action: IDataObject): unknown {
+  const toolInput = action.toolInput;
+  if (toolInput && typeof toolInput === 'object' && Object.keys(toolInput).length > 0) {
+    return toolInput;
+  }
+
+  const messageLog = action.messageLog;
+  if (Array.isArray(messageLog)) {
+    const toolCallId = action.toolCallId;
+    for (const message of messageLog) {
+      const toolCalls = (message as IDataObject)?.tool_calls;
+      if (!Array.isArray(toolCalls)) continue;
+      const match = toolCalls.find((tc) => (tc as IDataObject)?.id === toolCallId) ?? toolCalls[0];
+      const args = (match as IDataObject)?.args;
+      if (args && typeof args === 'object' && Object.keys(args).length > 0) {
+        return args;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+/**
+ * Recover the tools each agent actually invoked from its `intermediateSteps` output.
+ * Only captured (success) sources carry output; nodes without `intermediateSteps`
+ * yield nothing. The agent must have "Return Intermediate Steps" enabled.
+ */
+export function extractToolCalls(sources: SpanSource[]): ToolCall[] {
+  const calls: ToolCall[] = [];
+  for (const source of sources) {
+    if (source.status !== 'success') continue;
+    for (const item of source.items) {
+      const steps = item.intermediateSteps;
+      if (!Array.isArray(steps)) continue;
+      for (const step of steps) {
+        const action = (step as IDataObject)?.action as IDataObject | undefined;
+        const tool = action?.tool;
+        if (typeof tool !== 'string' || tool.length === 0) continue;
+        calls.push({
+          name: tool,
+          arguments: action ? resolveToolArguments(action) : undefined,
+          agentNodeName: source.nodeName,
+        });
+      }
+    }
+  }
+  return calls;
+}
+
 export function buildCanonicalTracePayload(
   sources: SpanSource[],
   workflowId: string,
   metadata: IDataObject,
   platformId: string,
   parentMap: Record<string, string | null>,
+  toolCalls: ToolCall[] = [],
 ): CanonicalTracePayload {
   const spanIdByNode: Record<string, string> = {};
   for (const s of sources) {
@@ -110,6 +171,21 @@ export function buildCanonicalTracePayload(
   }
 
   const spans = sources.map((s) => buildSpan(s, spanIdByNode, parentMap));
+
+  // Real tool invocations become child spans of their agent so the consumer
+  // evaluates them via expected_tool_calls (gen_ai.tool.name + parent_span_id).
+  for (const call of toolCalls) {
+    const attributes: Record<string, unknown> = { 'gen_ai.tool.name': call.name };
+    if (call.arguments !== undefined) {
+      attributes['gen_ai.tool.call.arguments'] = safeStringify(call.arguments);
+    }
+    spans.push({
+      span_id: randomUUID(),
+      parent_span_id: spanIdByNode[call.agentNodeName] ?? null,
+      name: call.name,
+      attributes,
+    });
+  }
 
   const payload: CanonicalTracePayload = {
     spans,

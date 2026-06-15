@@ -2,6 +2,13 @@
 
 Rules for agents using git in this repo. Load before running any git command or proposing a git step in a plan.
 
+## Release mechanism
+
+Releases run through **`googleapis/release-please-action@v4`** in [`.github/workflows/release-please.yml`](../.github/workflows/release-please.yml), triggered on push to `main`. It reads Conventional Commits to open/maintain a Release PR that bumps `package.json` `version` and `CHANGELOG.md`; merging that PR tags the release and chains `release.yml` to publish. Consequences for agents:
+
+- Never push to `main` directly and never hand-edit the version or `CHANGELOG.md` — the version is **derived from your commit type** (`fix:` → patch, `feat:` → minor, `feat!:`/`BREAKING CHANGE:` → major). Pick the type to get the bump you want.
+- Config lives in `.release-please-config.json` + `.release-please-manifest.json`. See the `release-flow` skill for the full guide.
+
 ## When git is allowed
 
 - Only when the user includes a git step in the approved plan, or explicitly asks for it.
