@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2](https://github.com/mibo-ai/mibo-testing-n8n-node/compare/n8n-nodes-mibo-testing-v1.0.1...n8n-nodes-mibo-testing-v1.0.2) (2026-06-15)
+
+
+### Bug Fixes
+
+* capture real agent tool calls and correct trace span emission ([#5](https://github.com/mibo-ai/mibo-testing-n8n-node/issues/5)) ([cfad3e7](https://github.com/mibo-ai/mibo-testing-n8n-node/commit/cfad3e7b73e0f3fc965944626b08d66603031c48))
+
 ## [1.0.1](https://github.com/mibo-ai/mibo-testing-n8n-node/compare/n8n-nodes-mibo-testing-v1.0.0...n8n-nodes-mibo-testing-v1.0.1) (2026-06-06)
 
 
