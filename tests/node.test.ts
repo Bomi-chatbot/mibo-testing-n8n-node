@@ -35,12 +35,27 @@ const DEFAULT_WORKFLOW_NODES = [
     parameters: { url: 'https://example.com', method: 'GET' },
   },
   { name: 'AI Agent', type: '@n8n/n8n-nodes-langchain.agent', parameters: {} },
+  {
+    name: 'Google Gemini Chat Model',
+    type: '@n8n/n8n-nodes-langchain.lmChatGoogleGemini',
+    parameters: {},
+  },
+  { name: 'Date & Time', type: 'n8n-nodes-base.dateTime', parameters: {} },
   { name: 'Sticky Note', type: 'n8n-nodes-base.stickyNote', parameters: {} },
+  {
+    name: 'Mibo Testing',
+    type: '@mibo-ai/n8n-nodes-mibo-testing.miboTesting',
+    parameters: {},
+  },
 ];
 
 const DEFAULT_CONNECTIONS = {
   Webhook: { main: [[{ node: 'HTTP Request' }]] },
   'HTTP Request': { main: [[{ node: 'AI Agent' }]] },
+  'AI Agent': { main: [[{ node: 'Mibo Testing' }]] },
+  // AI sub-nodes feed the Agent via non-main connection types.
+  'Google Gemini Chat Model': { ai_languageModel: [[{ node: 'AI Agent' }]] },
+  'Date & Time': { ai_tool: [[{ node: 'AI Agent' }]] },
 };
 
 const DEFAULT_ITEMS_PROXY: Record<string, IDataObject[]> = {
@@ -76,7 +91,7 @@ function createMockExecuteFunctions(overrides: MockOverrides = {}) {
     connections: DEFAULT_CONNECTIONS,
   };
 
-  const httpRequest = vi.fn(async () => workflowResponse);
+  const httpRequest = vi.fn(async (_opts?: unknown) => workflowResponse);
 
   const mock = {
     getInputData: vi.fn(() => inputItems),
@@ -122,19 +137,161 @@ describe('MiboTesting.execute', () => {
   });
 
   describe('canonical trace emission', () => {
-    it('emits one span per executed (non-excluded) node with display names and wired parents', async () => {
+    it('emits one span per executed main node with display names and wired parents', async () => {
       const { mock } = createMockExecuteFunctions();
       await node.execute.call(mock);
 
       const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
-      expect(payload.spans).toHaveLength(3);
       const byName = Object.fromEntries(payload.spans.map((s) => [s.name, s]));
-      expect(Object.keys(byName).sort()).toEqual(['AI Agent', 'HTTP Request', 'Webhook']);
+      // Sticky Note (excluded type), Mibo Testing (self) and Date & Time (a tool, not a
+      // node) are gone; the three main nodes plus the language model remain.
       expect(byName['Sticky Note']).toBeUndefined();
+      expect(byName['Mibo Testing']).toBeUndefined();
 
       expect(byName.Webhook.parent_span_id).toBeNull();
       expect(byName['HTTP Request'].parent_span_id).toBe(byName.Webhook.span_id);
       expect(byName['AI Agent'].parent_span_id).toBe(byName['HTTP Request'].span_id);
+
+      // The three reachable main nodes carry their captured output.
+      expect(byName.Webhook.attributes['n8n.node.status']).toBe('success');
+      expect(byName['HTTP Request'].attributes['n8n.node.status']).toBe('success');
+      expect(byName['AI Agent'].attributes['n8n.node.status']).toBe('success');
+    });
+
+    it('emits the language model as an output-less span but never the tool as a node', async () => {
+      const { mock } = createMockExecuteFunctions();
+      const result = await node.execute.call(mock);
+
+      const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
+      const byName = Object.fromEntries(payload.spans.map((s) => [s.name, s]));
+
+      // The model runs with the agent: kept as an output-less span nested under it.
+      const gemini = byName['Google Gemini Chat Model'];
+      expect(gemini.attributes['n8n.node.status']).toBe('success');
+      expect(gemini.attributes['n8n.node.output']).toBeUndefined();
+      expect(gemini.parent_span_id).toBe(byName['AI Agent'].span_id);
+
+      // A tool is not a node: Date & Time never appears as a node span (only as a
+      // real tool-call from intermediateSteps, which this run has none of).
+      expect(byName['Date & Time']).toBeUndefined();
+      expect(payload.spans.map((s) => s.name)).not.toContain('Mibo Testing');
+
+      const trace = result[0][0].json._miboTrace as IDataObject;
+      expect(trace.nodesNotExecuted).toBeUndefined();
+      expect(trace.warning).toBeUndefined();
+    });
+
+    it('recovers real tool calls from the agent intermediateSteps as child spans', async () => {
+      const agentWithSteps = DEFAULT_WORKFLOW_NODES.map((n) =>
+        n.name === 'AI Agent'
+          ? { ...n, parameters: { options: { returnIntermediateSteps: true } } }
+          : n,
+      );
+      const { mock } = createMockExecuteFunctions({
+        workflowResponse: { nodes: agentWithSteps, connections: DEFAULT_CONNECTIONS },
+        itemsProxy: {
+          Webhook: [{ body: 'hi' }],
+          'HTTP Request': [{ ok: true }],
+          'AI Agent': [
+            {
+              output: 'done',
+              intermediateSteps: [
+                {
+                  action: { tool: 'Date & Time', toolInput: { format: 'iso' } },
+                  observation: '2026-06-15',
+                },
+              ],
+            },
+          ],
+        },
+      });
+      const result = await node.execute.call(mock);
+
+      const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
+      const byName = Object.fromEntries(payload.spans.map((s) => [s.name, s]));
+
+      // One child span per real invocation, carrying the GenAI tool attributes and
+      // parented to the agent that called it.
+      const toolSpan = payload.spans.find((s) => s.attributes['gen_ai.tool.name'] === 'Date & Time');
+      expect(toolSpan).toBeDefined();
+      expect(toolSpan?.parent_span_id).toBe(byName['AI Agent'].span_id);
+      expect(toolSpan?.attributes['gen_ai.tool.call.arguments']).toBe('{"format":"iso"}');
+
+      // Captured the real call, so no "enable intermediate steps" warning.
+      const trace = result[0][0].json._miboTrace as IDataObject;
+      expect(trace.toolCallsSent).toBe(1);
+      expect(trace.toolCallsWarning).toBeUndefined();
+    });
+
+    it('recovers tool args from messageLog when toolInput is empty (real #23501 run)', async () => {
+      const agentWithSteps = DEFAULT_WORKFLOW_NODES.map((n) =>
+        n.name === 'AI Agent'
+          ? { ...n, parameters: { options: { returnIntermediateSteps: true } } }
+          : n,
+      );
+      const { mock } = createMockExecuteFunctions({
+        workflowResponse: { nodes: agentWithSteps, connections: DEFAULT_CONNECTIONS },
+        itemsProxy: {
+          Webhook: [{ body: 'hi' }],
+          'HTTP Request': [{ ok: true }],
+          'AI Agent': [
+            {
+              output: 'Here is the date',
+              intermediateSteps: [
+                {
+                  action: {
+                    tool: 'Date_Time',
+                    toolInput: {},
+                    toolCallId: 'tc-1',
+                    messageLog: [{ tool_calls: [{ id: 'tc-1', args: { id: 'tc-1' } }] }],
+                  },
+                  observation: '[{"currentDate":"2026-06-15"}]',
+                },
+              ],
+            },
+          ],
+        },
+      });
+      const result = await node.execute.call(mock);
+
+      const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
+      const agentSpan = payload.spans.find((s) => s.name === 'AI Agent');
+      // The tool name is n8n's sanitized 'Date_Time', not the node label 'Date & Time'.
+      const toolSpan = payload.spans.find((s) => s.attributes['gen_ai.tool.name'] === 'Date_Time');
+      expect(toolSpan).toBeDefined();
+      expect(toolSpan?.parent_span_id).toBe(agentSpan?.span_id);
+      expect(toolSpan?.attributes['gen_ai.tool.call.arguments']).toBe('{"id":"tc-1"}');
+
+      const trace = result[0][0].json._miboTrace as IDataObject;
+      expect(trace.toolCallsSent).toBe(1);
+      expect(trace.toolCallsWarning).toBeUndefined();
+    });
+
+    it("warns when an agent has tools wired but 'Return Intermediate Steps' is off", async () => {
+      // DEFAULT AI Agent has no returnIntermediateSteps and Date & Time wired as ai_tool.
+      const { mock } = createMockExecuteFunctions();
+      const result = await node.execute.call(mock);
+      const trace = result[0][0].json._miboTrace as IDataObject;
+
+      expect(trace.toolCallsSent).toBe(0);
+      expect(trace.toolCallsWarning).toContain('Return Intermediate Steps');
+      expect(trace.toolCallsWarning).toContain('AI Agent');
+    });
+
+    it('does not warn when intermediate steps are on but no tool was called', async () => {
+      const agentWithSteps = DEFAULT_WORKFLOW_NODES.map((n) =>
+        n.name === 'AI Agent'
+          ? { ...n, parameters: { options: { returnIntermediateSteps: true } } }
+          : n,
+      );
+      const { mock } = createMockExecuteFunctions({
+        workflowResponse: { nodes: agentWithSteps, connections: DEFAULT_CONNECTIONS },
+      });
+      const result = await node.execute.call(mock);
+      const trace = result[0][0].json._miboTrace as IDataObject;
+
+      expect(trace.toolCallsSent).toBe(0);
+      expect(trace.toolCallsWarning).toBeUndefined();
     });
 
     it('passes input items through unchanged with _miboTrace appended', async () => {
@@ -167,7 +324,10 @@ describe('MiboTesting.execute', () => {
       const { mock, httpRequest } = createMockExecuteFunctions();
       await node.execute.call(mock);
       expect(httpRequest).toHaveBeenCalledOnce();
-      const args = httpRequest.mock.calls[0][0] as { headers: Record<string, string>; url: string };
+      const args = httpRequest.mock.calls[0][0] as unknown as {
+        headers: Record<string, string>;
+        url: string;
+      };
       expect(args.url).toContain('/workflows/wf-123');
       expect(args.headers['X-N8N-API-KEY']).toBe('fake-n8n-key');
     });
@@ -184,6 +344,7 @@ describe('MiboTesting.execute', () => {
       const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
       expect(payload.spans.map((s) => s.name).sort()).toEqual([
         'AI Agent',
+        'Google Gemini Chat Model',
         'HTTP Request',
         'Webhook',
       ]);

@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  agentsMissingIntermediateSteps,
   buildParentMap,
+  buildSubNodeNames,
+  buildToolNodeNames,
   findRequestIdInData,
   isValidUUID,
   normalizeServerUrl,
@@ -106,15 +109,76 @@ describe('buildParentMap', () => {
     expect(parents.Merge).toBe('Source1');
   });
 
-  it('handles non-main connection types (ai_tool, etc.)', () => {
+  it('nests AI sub-nodes under the node they feed, keeping the agent on its main parent', () => {
     const connections = {
       Tool: { ai_tool: [[{ node: 'AI Agent' }]] },
+      'Chat Model': { ai_languageModel: [[{ node: 'AI Agent' }]] },
+      'HTTP Request': { main: [[{ node: 'AI Agent' }]] },
     };
-    expect(buildParentMap(connections)['AI Agent']).toBe('Tool');
+    const parents = buildParentMap(connections);
+    // The Agent keeps its main upstream node as parent...
+    expect(parents['AI Agent']).toBe('HTTP Request');
+    // ...while the model/tool nest under the Agent they feed.
+    expect(parents.Tool).toBe('AI Agent');
+    expect(parents['Chat Model']).toBe('AI Agent');
   });
 
   it('returns empty map for empty connections', () => {
     expect(buildParentMap({})).toEqual({});
+  });
+});
+
+describe('buildSubNodeNames', () => {
+  it('collects nodes that feed a parent via non-main connections', () => {
+    const connections = {
+      Webhook: { main: [[{ node: 'AI Agent' }]] },
+      'Chat Model': { ai_languageModel: [[{ node: 'AI Agent' }]] },
+      'Date & Time': { ai_tool: [[{ node: 'AI Agent' }]] },
+    };
+    const subNodes = buildSubNodeNames(connections);
+    expect(subNodes.has('Chat Model')).toBe(true);
+    expect(subNodes.has('Date & Time')).toBe(true);
+    expect(subNodes.has('Webhook')).toBe(false);
+  });
+
+  it('returns an empty set for empty connections', () => {
+    expect(buildSubNodeNames({}).size).toBe(0);
+  });
+});
+
+describe('agentsMissingIntermediateSteps', () => {
+  const connections = { Tool: { ai_tool: [[{ node: 'AI Agent' }]] } };
+
+  it('flags an agent with tools whose returnIntermediateSteps is not enabled', () => {
+    const nodes = [{ name: 'AI Agent', type: 'agent', parameters: { options: {} } }];
+    expect(agentsMissingIntermediateSteps(connections, nodes)).toEqual(['AI Agent']);
+  });
+
+  it('does not flag an agent that enabled returnIntermediateSteps', () => {
+    const nodes = [
+      { name: 'AI Agent', type: 'agent', parameters: { options: { returnIntermediateSteps: true } } },
+    ];
+    expect(agentsMissingIntermediateSteps(connections, nodes)).toEqual([]);
+  });
+
+  it('returns empty when no tools are wired', () => {
+    expect(agentsMissingIntermediateSteps({}, [])).toEqual([]);
+  });
+});
+
+describe('buildToolNodeNames', () => {
+  it('collects only ai_tool sources, not models or memory', () => {
+    const connections = {
+      'Date & Time': { ai_tool: [[{ node: 'AI Agent' }]] },
+      'Chat Model': { ai_languageModel: [[{ node: 'AI Agent' }]] },
+      Memory: { ai_memory: [[{ node: 'AI Agent' }]] },
+      Webhook: { main: [[{ node: 'AI Agent' }]] },
+    };
+    const tools = buildToolNodeNames(connections);
+    expect(tools.has('Date & Time')).toBe(true);
+    expect(tools.has('Chat Model')).toBe(false);
+    expect(tools.has('Memory')).toBe(false);
+    expect(tools.has('Webhook')).toBe(false);
   });
 });
 

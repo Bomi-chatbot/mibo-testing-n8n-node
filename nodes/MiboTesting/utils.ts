@@ -74,29 +74,103 @@ export async function fetchWorkflow(
 }
 
 /**
- * Build a child→parent map from n8n's connection graph.
- *
- * n8n `connections` is keyed by *source* node; each entry lists outgoing edges
- * grouped by output type (`main`, `ai_tool`, ...). We invert that: every target
- * node records its first incoming source as its parent. Nodes with no incoming
- * edge map to null (roots). Merge nodes pick the first connector deterministically
- * — assertions evaluate against `span.name`, not graph topology.
+ * Child→parent map from n8n connections. `main` edges parent target→source;
+ * AI sub-node edges invert so the sub-node nests under the agent it feeds.
+ * First writer wins, so a node's `main` parent is never overwritten.
  */
 export function buildParentMap(connections: WorkflowConnections): Record<string, string | null> {
   const parents: Record<string, string | null> = {};
+  const setParent = (child: string, parent: string) => {
+    if (parents[child] === undefined) {
+      parents[child] = parent;
+    }
+  };
+
   for (const sourceName of Object.keys(connections)) {
     const outputs = connections[sourceName];
     for (const outputType of Object.keys(outputs)) {
+      const isMain = outputType === 'main';
       for (const branch of outputs[outputType]) {
         for (const edge of branch) {
-          if (edge?.node && parents[edge.node] === undefined) {
-            parents[edge.node] = sourceName;
+          if (!edge?.node) {
+            continue;
+          }
+          if (isMain) {
+            setParent(edge.node, sourceName);
+          } else {
+            setParent(sourceName, edge.node);
           }
         }
       }
     }
   }
   return parents;
+}
+
+/**
+ * AI sub-nodes: sources of a non-`main` connection (`ai_languageModel`, `ai_tool`, ...).
+ * Their output isn't reachable via `$items`, so they're emitted as output-less spans but
+ * kept out of the "did not execute" warning.
+ */
+export function buildSubNodeNames(connections: WorkflowConnections): Set<string> {
+  const subNodes = new Set<string>();
+  for (const sourceName of Object.keys(connections)) {
+    const outputs = connections[sourceName];
+    for (const outputType of Object.keys(outputs)) {
+      if (outputType !== 'main') {
+        subNodes.add(sourceName);
+        break;
+      }
+    }
+  }
+  return subNodes;
+}
+
+/**
+ * AI tools: sources of an `ai_tool` connection. Their real invocations are recovered
+ * from the agent's `intermediateSteps`, so this set is only used to detect when tools
+ * are present (e.g. to check the agent is configured to expose them).
+ */
+export function buildToolNodeNames(connections: WorkflowConnections): Set<string> {
+  const tools = new Set<string>();
+  for (const sourceName of Object.keys(connections)) {
+    if (connections[sourceName].ai_tool) {
+      tools.add(sourceName);
+    }
+  }
+  return tools;
+}
+
+/**
+ * Names of agent nodes that have tools wired but don't expose them: an `ai_tool` feeds
+ * the agent, yet its `options.returnIntermediateSteps` isn't enabled. Without that flag
+ * n8n never reports which tools ran, so tool-call assertions would see nothing. Used to
+ * warn the user — not to be confused with an agent that simply called no tool this run.
+ */
+export function agentsMissingIntermediateSteps(
+  connections: WorkflowConnections,
+  nodes: WorkflowNode[],
+): string[] {
+  const agentsWithTools = new Set<string>();
+  for (const sourceName of Object.keys(connections)) {
+    const toolEdges = connections[sourceName].ai_tool;
+    if (!toolEdges) continue;
+    for (const branch of toolEdges) {
+      for (const edge of branch) {
+        if (edge?.node) agentsWithTools.add(edge.node);
+      }
+    }
+  }
+
+  const missing: string[] = [];
+  for (const agentName of agentsWithTools) {
+    const node = nodes.find((n) => n.name === agentName);
+    const options = node?.parameters?.options as IDataObject | undefined;
+    if (options?.returnIntermediateSteps !== true) {
+      missing.push(agentName);
+    }
+  }
+  return missing;
 }
 
 function extractRequestIdFromHeaders(headers: IDataObject | undefined): string | undefined {

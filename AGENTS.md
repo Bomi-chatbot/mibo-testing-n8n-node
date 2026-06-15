@@ -57,3 +57,4 @@ Live under `./skills/`. Auto-activate when the user's request matches the skill 
 - Credentials: `credentials/MiboTestingApi.credentials.ts`
 - Tests: `tests/`
 - Dev scripts: `scripts/`
+- **Trace/span contract:** the node emits canonical spans over the OpenTelemetry GenAI semantic conventions, the `gen_ai.*` attributes. The shape is driven by what the trace consumer parses, so confirm against that contract before changing what the node emits. See `agents/security.md` → "Trace payload as a public surface". The consumer's spec lives in a separate private repo and is not committed here.
