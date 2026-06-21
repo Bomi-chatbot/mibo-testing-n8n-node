@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.3](https://github.com/mibo-ai/mibo-testing-n8n-node/compare/n8n-nodes-mibo-testing-v1.0.2...n8n-nodes-mibo-testing-v1.0.3) (2026-06-21)
+
+
+### Bug Fixes
+
+* use NodeApiError for HTTP failures per n8n review ([#7](https://github.com/mibo-ai/mibo-testing-n8n-node/issues/7)) ([c5d77db](https://github.com/mibo-ai/mibo-testing-n8n-node/commit/c5d77db5f9104612e7158579f379b73aaf28d889))
+
 ## [1.0.2](https://github.com/mibo-ai/mibo-testing-n8n-node/compare/n8n-nodes-mibo-testing-v1.0.1...n8n-nodes-mibo-testing-v1.0.2) (2026-06-15)
 
 
