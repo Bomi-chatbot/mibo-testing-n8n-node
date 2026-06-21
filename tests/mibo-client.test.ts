@@ -16,7 +16,7 @@ describe('parseErrorResponse', () => {
   });
 
   it('returns fallback for unknown error', () => {
-    expect(parseErrorResponse({})).toBe('Unknown error while sending the trace');
+    expect(parseErrorResponse({})).toBe('Unknown response while sending the trace');
   });
 
   it('detects payload too large from message', () => {

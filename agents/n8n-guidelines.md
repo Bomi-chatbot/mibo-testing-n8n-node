@@ -57,7 +57,9 @@ Authoritative validator: `npx @n8n/scan-community-package @mibo-ai/n8n-nodes-mib
 - `inputs` / `outputs` use string literals `['main']`, **not** `NodeConnectionTypes.Main`. See `agents/style.md`.
 
 ### Errors
-- Throw `NodeOperationError(this.getNode(), message, { description, itemIndex })`.
+- **HTTP/API failures use `NodeApiError`**, not `NodeOperationError`. n8n's manual review requires it for calls to external APIs (the Mibo Testing API, the n8n REST API): it preserves the HTTP status code and full response body in the execution UI, which helps users diagnose failures. Pass the original error so that detail survives: `throw new NodeApiError(this.getNode(), error as JsonObject, { message, description })`. Applies to the trace-POST `catch` in `MiboTesting.node.ts` and the `fetchWorkflow` `catch` in `utils.ts`.
+- **Only `description` is reliably preserved; `message` is best-effort.** `NodeApiError` rewrites the headline `message` when the underlying error carries a recognised code — `ECONNREFUSED`, `ETIMEDOUT`, `EAI_AGAIN`, etc. (the common connection failures) become n8n's generic copy ("The service refused the connection…") and your custom `message` is demoted into `messages[]`. So put the actionable fix guidance in `description`, and never assert on the exact `message` in tests for the connection-failure path — assert on `description`/`httpCode` instead.
+- `NodeOperationError(this.getNode(), message, { description, itemIndex })` is for the node's **own** validation/config errors — bad UUID, no captured nodes, unsupported workflow source, malformed API response shape — not for a failed outbound request.
 - Message says *what happened*; description says *how to fix it*.
 - Avoid the words "error", "problem", "failure", "mistake" in either.
 - If the failure traces to a specific parameter, name it in the message using its `displayName` in single quotes.

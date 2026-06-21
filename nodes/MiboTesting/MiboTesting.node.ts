@@ -4,8 +4,9 @@ import type {
   INodeExecutionData,
   INodeType,
   INodeTypeDescription,
+  JsonObject,
 } from 'n8n-workflow';
-import { NodeOperationError } from 'n8n-workflow';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 import { buildCanonicalTracePayload, buildMetadata, extractToolCalls } from './builders';
 import {
   AUTO_EXCLUDED_NODE_TYPES,
@@ -351,15 +352,12 @@ export class MiboTesting implements INodeType {
         }
       } else {
         const isPayloadTooLarge = errorMessage.toLowerCase().includes('too large');
-        throw new NodeOperationError(
-          this.getNode(),
-          `Failed to send trace to Mibo Testing: ${errorMessage}`,
-          {
-            description: isPayloadTooLarge
-              ? 'Try excluding nodes with large outputs (files, images, etc.) or reducing payload-heavy parameters.'
-              : 'Check your Mibo Testing API Key (the first field in the credentials). This is NOT the n8n API Key.',
-          },
-        );
+        throw new NodeApiError(this.getNode(), error as JsonObject, {
+          message: `Failed to send trace to Mibo Testing: ${errorMessage}`,
+          description: isPayloadTooLarge
+            ? 'Try excluding nodes with large outputs (files, images, etc.) or reducing payload-heavy parameters.'
+            : 'Check your Mibo Testing API Key (the first field in the credentials). This is NOT the n8n API Key.',
+        });
       }
     }
 

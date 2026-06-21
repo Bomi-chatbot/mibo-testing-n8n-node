@@ -1,6 +1,6 @@
 import type { IDataObject, IExecuteFunctions, INode, INodeExecutionData } from 'n8n-workflow';
 
-import { NodeOperationError } from 'n8n-workflow';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { MiboTesting } from '../nodes/MiboTesting/MiboTesting.node';
@@ -395,10 +395,22 @@ describe('MiboTesting.execute', () => {
   });
 
   describe('error handling', () => {
-    it('throws NodeOperationError when continueOnFail is false', async () => {
-      mockSendTrace.mockRejectedValue({ message: 'Connection refused' });
+    it('throws NodeApiError with actionable description when continueOnFail is false', async () => {
+      mockSendTrace.mockRejectedValue({ message: 'connect ECONNREFUSED', code: 'ECONNREFUSED' });
       const { mock } = createMockExecuteFunctions();
-      await expect(node.execute.call(mock)).rejects.toThrow('Failed to send trace');
+      await expect(node.execute.call(mock)).rejects.toThrow(NodeApiError);
+      await expect(node.execute.call(mock)).rejects.toMatchObject({
+        description: expect.stringContaining('Mibo Testing API Key'),
+      });
+    });
+
+    it('preserves the HTTP status code on the thrown NodeApiError', async () => {
+      mockSendTrace.mockRejectedValue({
+        message: 'Request failed',
+        response: { status: 401 },
+      });
+      const { mock } = createMockExecuteFunctions();
+      await expect(node.execute.call(mock)).rejects.toMatchObject({ httpCode: '401' });
     });
 
     it('returns trace with sent=false when continueOnFail is true', async () => {

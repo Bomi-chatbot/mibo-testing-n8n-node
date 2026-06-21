@@ -57,5 +57,6 @@ The node observes a workflow; it does **not** participate in it.
 ## Error surface
 
 - Errors raised by this node must be actionable: include what failed and how to fix it.
-- Don't echo the upstream error verbatim if it leaks internals — wrap with a clean `NodeOperationError`.
+- **HTTP failures wrap in `NodeApiError`** (preserves status code + response body for the user); the node's own validation/config errors use `NodeOperationError`. See `agents/n8n-guidelines.md` → "Errors".
+- Don't echo the upstream error verbatim if it leaks internals — set a clean `message`/`description`. Note `NodeApiError` may override your `message` with generic copy for recognised connection codes (ECONNREFUSED, ETIMEDOUT…); only `description` is reliably preserved, so keep the actionable guidance there. `NodeApiError` keeps the original error as context for the UI, so don't put secrets in the request that produced it (we don't — headers are per-request).
 - Don't swallow errors silently. Either throw, or surface them via `_miboTrace.error` when `continueOnFail()` is on.

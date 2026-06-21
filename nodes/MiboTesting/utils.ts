@@ -1,5 +1,5 @@
-import type { IDataObject, IExecuteFunctions, INodeExecutionData } from 'n8n-workflow';
-import { NodeOperationError } from 'n8n-workflow';
+import type { IDataObject, IExecuteFunctions, INodeExecutionData, JsonObject } from 'n8n-workflow';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 import { DOCS_URL, UUID_REGEX } from './constants';
 import type { FetchedWorkflow, WorkflowConnections, WorkflowNode } from './types';
 
@@ -66,7 +66,8 @@ export async function fetchWorkflow(
       throw error;
     }
 
-    throw new NodeOperationError(node.getNode(), 'Could not connect to your n8n instance', {
+    throw new NodeApiError(node.getNode(), error as JsonObject, {
+      message: 'Could not connect to your n8n instance',
       description:
         'Please check that your n8n API Key and Base URL are correct in the Mibo Testing credentials. You can find your API key in n8n under Settings > API. Make sure your n8n instance is running and reachable.',
     });
