@@ -36,7 +36,7 @@ export function parseErrorResponse(error: unknown): string {
     return baseMessage;
   }
 
-  return err.message || 'Unknown error while sending the trace';
+  return err.message || 'Unknown response while sending the trace';
 }
 
 export function calculatePayloadSize(payload: CanonicalTracePayload): number {

@@ -1,10 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import type { IExecuteFunctions, INode } from 'n8n-workflow';
+import { NodeApiError, NodeOperationError } from 'n8n-workflow';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   agentsMissingIntermediateSteps,
   buildParentMap,
   buildSubNodeNames,
   buildToolNodeNames,
+  fetchWorkflow,
   findRequestIdInData,
   isValidUUID,
   normalizeServerUrl,
@@ -190,5 +193,59 @@ describe('safeStringify', () => {
   it('coerces BigInt to string instead of throwing', () => {
     const result = safeStringify({ big: 9007199254740993n });
     expect(result).toContain('9007199254740993');
+  });
+});
+
+describe('fetchWorkflow', () => {
+  const makeNode = (httpRequest: ReturnType<typeof vi.fn>) =>
+    ({
+      getNode: () => ({ name: 'Mibo Testing', type: 'miboTesting' }) as INode,
+      helpers: { httpRequest },
+    }) as unknown as IExecuteFunctions;
+
+  it('returns nodes and connections on a valid response', async () => {
+    const httpRequest = vi.fn(async () => ({
+      nodes: [{ name: 'Webhook', type: 'n8n-nodes-base.webhook', parameters: {} }],
+      connections: { Webhook: { main: [] } },
+    }));
+    const result = await fetchWorkflow(makeNode(httpRequest), 'http://localhost:5678/api/v1', 'key', 'wf-1');
+    expect(result.nodes).toEqual([
+      { name: 'Webhook', type: 'n8n-nodes-base.webhook', parameters: {} },
+    ]);
+    expect(result.connections).toEqual({ Webhook: { main: [] } });
+  });
+
+  it('throws NodeApiError preserving the HTTP status when the request fails', async () => {
+    const httpRequest = vi.fn(async () => {
+      throw { message: 'Request failed', response: { status: 403 } };
+    });
+    const node = makeNode(httpRequest);
+    await expect(fetchWorkflow(node, 'http://localhost:5678/api/v1', 'key', 'wf-1')).rejects.toThrow(
+      NodeApiError,
+    );
+    await expect(
+      fetchWorkflow(node, 'http://localhost:5678/api/v1', 'key', 'wf-1'),
+    ).rejects.toMatchObject({ httpCode: '403' });
+  });
+
+  it('keeps the actionable description when the connection is refused', async () => {
+    const httpRequest = vi.fn(async () => {
+      throw { message: 'connect ECONNREFUSED', code: 'ECONNREFUSED' };
+    });
+    const node = makeNode(httpRequest);
+    await expect(
+      fetchWorkflow(node, 'http://localhost:5678/api/v1', 'key', 'wf-1'),
+    ).rejects.toMatchObject({ description: expect.stringContaining('n8n API Key') });
+  });
+
+  it('rethrows the NodeOperationError when the response shape is invalid', async () => {
+    const httpRequest = vi.fn(async () => ({ nodes: 'not-an-array' }));
+    const node = makeNode(httpRequest);
+    await expect(
+      fetchWorkflow(node, 'http://localhost:5678/api/v1', 'key', 'wf-1'),
+    ).rejects.toThrow(NodeOperationError);
+    await expect(
+      fetchWorkflow(node, 'http://localhost:5678/api/v1', 'key', 'wf-1'),
+    ).rejects.toThrow('Unexpected response from n8n API');
   });
 });
