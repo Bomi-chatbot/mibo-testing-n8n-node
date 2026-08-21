@@ -13,7 +13,7 @@ Get the Mibo Testing node sending traces in about 30 seconds.
 
    ![Workflow with Mibo Testing node](./images/quickstart-workflow.png)
 
-4. **Run the workflow** — the node passes every input through unchanged and appends a `_miboTrace` summary. Open the Mibo Testing dashboard to see the trace.
+4. **Run the workflow** — the node returns one focused `_miboTrace` summary. Open the Mibo Testing dashboard to see the trace. Turn on **Include Input Data in Output** only when downstream nodes also need the original items.
 
    ![Node configuration](./images/quickstart-node-config.png)
 
@@ -21,7 +21,7 @@ That's it. No filters, no per-node config, no host-level setup.
 
 ## What leaves n8n
 
-The node captures available workflow observations, applies Sensitive Data Protection to cloned parameters, outputs, tool arguments, and user metadata, then sends the canonical trace to **hosted Mibo Testing**. This applies to self-hosted n8n as well. The original workflow items are passed through unchanged.
+The node captures available workflow observations, applies Sensitive Data Protection to cloned parameters, outputs, tool arguments, and user metadata, then sends the canonical trace to **hosted Mibo Testing**. This applies to self-hosted n8n as well. Original workflow items are omitted from the node output by default; enabling **Include Input Data in Output** returns them unchanged.
 
 Automatic Sensitive Data Protection is enabled by default. Custom Sensitive Data Protection is optional and uses deep-search paths such as `email`, `customer.email`, or `customers.*.email`; every matching occurrence is protected before transmission. Encryption at rest does not replace capture-time protection.
 
@@ -38,7 +38,7 @@ The node captures observations; Mibo owns assertions, replay-like smoke-test exe
 
 > `Failed to send trace to Mibo Testing: The trace data is too large to send.`
 
-The node has a **10 MB hard limit per trace**. n8n does not let community nodes gzip outgoing HTTP requests, so the JSON payload travels uncompressed and the limit applies to the raw size. You will also see a warning at 8 MB.
+The node has a **10 MB hard limit per trace**. n8n does not let community nodes gzip outgoing HTTP requests, so the JSON payload travels uncompressed and the limit applies to the raw size. At 8 MB, the output includes a `payload_size` recommendation.
 
 Most common cause: one or more nodes return large outputs — files, base64 images, long LLM responses, or full document bodies — and those outputs get serialized into `n8n.node.output`.
 
@@ -46,7 +46,7 @@ Fixes:
 
 - Strip or summarize heavy fields before the Mibo Testing node (a Set or Code node trimming `data`, `image`, `body`, etc. is usually enough).
 - Split the workflow so heavy nodes run in a sub-workflow that is not traced.
-- Check the `_miboTrace.payloadSize` field in the node output — it tells you exactly how close you are to the limit.
+- Check `_miboTrace.trace.payloadSize` in the node output. Near the limit, `_miboTrace.recommendations` also contains a `payload_size` recommendation.
 
 ### Wrong node names in the trace
 

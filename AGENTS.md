@@ -1,6 +1,6 @@
 # n8n-nodes-mibo-testing
 
-Single-package n8n community node. Captures workflow traces and POSTs them to the Mibo Testing API. Passthrough design — never mutates workflow data, only appends `_miboTrace`.
+Single-package n8n community node. Captures workflow traces and POSTs them to the Mibo Testing API. Returns a focused `_miboTrace` summary by default; optional passthrough never mutates input data.
 
 Setup and commands live in [README.md](./README.md). This file is _rules_ and the entry point into the per-topic rule files in `agents/` and the procedural skills in `skills/`.
 

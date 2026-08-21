@@ -1,6 +1,6 @@
 # Mibo Testing Node Documentation
 
-The Mibo Testing node captures every executed node in your n8n workflow and POSTs them as a canonical OTEL-shaped trace to the Mibo Testing API. Input items pass through unchanged; only a `_miboTrace` summary is appended.
+The Mibo Testing node captures every executed node in your n8n workflow and POSTs them as a canonical OTEL-shaped trace to the Mibo Testing API. By default, it returns one focused `_miboTrace` summary; enable **Include Input Data in Output** to append that summary to every original input item instead.
 
 Trace processing is hosted by Mibo Testing, including for self-hosted n8n deployments. The node captures and protects observations; Mibo owns storage, assertions, pass/fail evaluation, smoke tests, trace-grounded test creation, and result history.
 
@@ -8,9 +8,9 @@ Trace processing is hosted by Mibo Testing, including for self-hosted n8n deploy
 
 1. Create credentials of type **Mibo Testing API** (see [Credentials](#credentials))
 2. Add the **Mibo Testing** node at the point in your workflow where you want the trace sent (usually at the end)
-3. (Optional) Fill **Agent ID**, **Request ID**, **Include Metadata**
+3. (Optional) Fill **Agent ID**, **Request ID Override**, or **Include Metadata**
 
-That's it. The node always auto-captures every executed workflow node — no filters, no toggles, no manual node lists to maintain.
+That's it. The node always auto-captures every executed workflow node — no capture filters or manual node lists to maintain.
 
 ```
 [Trigger] → [Your Nodes] → [Mibo Testing]
@@ -45,7 +45,7 @@ API keys are stored as password fields and never logged.
 | Parameter | Description |
 |-----------|-------------|
 | **Agent ID** | UUID of your agent in Mibo Testing. Leave empty if the API key is already scoped to a single agent. |
-| **Request ID** | Override the `x-request-ID` used to correlate this trace. Defaults to the incoming webhook header, falling back to the n8n execution ID. |
+| **Request ID Override** | Optional override for the `x-request-ID` used to correlate this trace. Leave empty to detect it from incoming webhook headers, falling back to the n8n execution ID. |
 | **Include Metadata** | When on, exposes a Metadata collection with **Environment**, **Version**, and **Additional Fields** (JSON). |
 | **Automatic Sensitive Data Protection** | Enabled by default. Protects common secrets and safe secret-name patterns before transmission. |
 | **Custom Sensitive Data Protection** | Disabled by default. Enables deep-search paths for domain-specific fields. |
@@ -55,6 +55,7 @@ API keys are stored as password fields and never logged.
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| **Include Input Data in Output** | Off | Include every original input item alongside the trace summary. |
 | **Timeout (Seconds)** | 30 | Maximum time to wait for the Mibo Testing server to respond. |
 
 ---
@@ -163,7 +164,7 @@ The node sets the `x-request-id` header on the POST so Mibo can match this trace
 
 Resolution order:
 
-1. The **Request ID** parameter, if set
+1. The **Request ID Override** parameter, if set
 2. `x-request-id` extracted from input data (recursive search through webhook headers and item JSON)
 3. The n8n execution ID, as final fallback
 
@@ -179,22 +180,38 @@ API matching: `POST /public/traces` returns `201` for a brand-new trace or `200`
 
 ## Output
 
-The node passes every input item through unchanged and appends a `_miboTrace` summary:
+The node returns one structured `_miboTrace` summary by default without repeating its input data:
 
 ```json
 {
-  "original_field": "preserved",
   "_miboTrace": {
     "sent": true,
     "traceId": "abc-123",
     "platformId": "550e8400-...",
     "requestId": "req-456",
+    "requestIdSource": "x-request-id",
     "timestamp": "2026-06-06T10:30:00.000Z",
-    "spansSent": 3,
-    "payloadSize": "12.5 KB"
+    "trace": {
+      "spansSent": 3,
+      "toolCallsSent": 0,
+      "payloadSize": "12.5 KB",
+      "nodes": [
+        { "name": "Webhook", "status": "success", "itemsCaptured": 1 },
+        { "name": "AI Agent", "status": "success", "itemsCaptured": 1 }
+      ]
+    },
+    "redaction": {
+      "automaticEnabled": true,
+      "manualEnabled": false,
+      "valuesRedacted": 1
+    },
+    "recommendations": [],
+    "miboUrl": "https://app.mibo-ai.com"
   }
 }
 ```
+
+Turn on **Include Input Data in Output** to append that summary to every original input item instead.
 
 If the trace POST failed but the workflow shouldn't error, `_miboTrace.sent` is `false` and `_miboTrace.error` holds the message.
 
@@ -202,7 +219,7 @@ If the trace POST failed but the workflow shouldn't error, `_miboTrace.sent` is 
 
 ## Payload size
 
-The maximum payload size accepted by the API is 10 MB. The node emits a `_miboTrace` warning when the payload exceeds 80% of that limit. Large outputs (file blobs, base64 images) are the usual cause — strip them upstream if you don't need them in the trace.
+The maximum payload size accepted by the API is 10 MB. When the payload exceeds 80% of that limit, `_miboTrace.recommendations` includes an entry with `code: "payload_size"`; the formatted size is always available at `_miboTrace.trace.payloadSize`. Large outputs (file blobs, base64 images) are the usual cause — strip them upstream if you don't need them in the trace.
 
 ---
 
@@ -284,7 +301,7 @@ This overrides the runner's auto-detection.
 ## Best practices
 
 1. **Add the n8n API key to credentials** — auto-discovery via the REST API is more robust than wiring a Get Workflow node
-2. **Set a Request ID** for active-testing scenarios so the runner can correlate
+2. **Let the node detect `x-request-id` automatically**; use **Request ID Override** only when the incoming data does not carry the desired correlation ID
 3. **Keep node display names stable** — they're the join key for Mibo assertions
 4. **Strip large binary fields upstream** if you don't need them in traces (file uploads, base64 images)
 5. **Use Include Metadata + Environment** to separate prod / staging traces in the Mibo dashboard

@@ -3,6 +3,7 @@ import type { IDataObject, IExecuteFunctions, INode, INodeExecutionData } from '
 import { NodeApiError, NodeOperationError } from 'n8n-workflow';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { MAX_PAYLOAD_SIZE_BYTES } from '../nodes/MiboTesting/constants';
 import { MiboTesting } from '../nodes/MiboTesting/MiboTesting.node';
 import type { CanonicalTracePayload } from '../nodes/MiboTesting/types';
 
@@ -214,9 +215,10 @@ describe('MiboTesting.execute', () => {
       expect(byName['Date & Time']).toBeUndefined();
       expect(payload.spans.map((s) => s.name)).not.toContain('Mibo Testing');
 
-      const trace = result[0][0].json._miboTrace as IDataObject;
-      expect(trace.nodesNotExecuted).toBeUndefined();
-      expect(trace.warning).toBeUndefined();
+      const summary = result[0][0].json._miboTrace as IDataObject;
+      expect(summary.recommendations).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'nodes_not_executed' })]),
+      );
     });
 
     it('recovers real tool calls from the agent intermediateSteps as child spans', async () => {
@@ -256,9 +258,11 @@ describe('MiboTesting.execute', () => {
       expect(toolSpan?.attributes['gen_ai.tool.call.arguments']).toBe('{"format":"iso"}');
 
       // Captured the real call, so no "enable intermediate steps" warning.
-      const trace = result[0][0].json._miboTrace as IDataObject;
-      expect(trace.toolCallsSent).toBe(1);
-      expect(trace.toolCallsWarning).toBeUndefined();
+      const summary = result[0][0].json._miboTrace as IDataObject;
+      expect(summary.trace).toMatchObject({ toolCallsSent: 1 });
+      expect(summary.recommendations).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'enable_intermediate_steps' })]),
+      );
     });
 
     it('recovers tool args from messageLog when toolInput is empty (real #23501 run)', async () => {
@@ -300,20 +304,28 @@ describe('MiboTesting.execute', () => {
       expect(toolSpan?.parent_span_id).toBe(agentSpan?.span_id);
       expect(toolSpan?.attributes['gen_ai.tool.call.arguments']).toBe('{"id":"tc-1"}');
 
-      const trace = result[0][0].json._miboTrace as IDataObject;
-      expect(trace.toolCallsSent).toBe(1);
-      expect(trace.toolCallsWarning).toBeUndefined();
+      const summary = result[0][0].json._miboTrace as IDataObject;
+      expect(summary.trace).toMatchObject({ toolCallsSent: 1 });
+      expect(summary.recommendations).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'enable_intermediate_steps' })]),
+      );
     });
 
     it("warns when an agent has tools wired but 'Return Intermediate Steps' is off", async () => {
       // DEFAULT AI Agent has no returnIntermediateSteps and Date & Time wired as ai_tool.
       const { mock } = createMockExecuteFunctions();
       const result = await node.execute.call(mock);
-      const trace = result[0][0].json._miboTrace as IDataObject;
+      const summary = result[0][0].json._miboTrace as IDataObject;
 
-      expect(trace.toolCallsSent).toBe(0);
-      expect(trace.toolCallsWarning).toContain('Return Intermediate Steps');
-      expect(trace.toolCallsWarning).toContain('AI Agent');
+      expect(summary.trace).toMatchObject({ toolCallsSent: 0 });
+      expect(summary.recommendations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'enable_intermediate_steps',
+            nodes: ['AI Agent'],
+          }),
+        ]),
+      );
     });
 
     it('does not warn when intermediate steps are on but no tool was called', async () => {
@@ -326,27 +338,73 @@ describe('MiboTesting.execute', () => {
         workflowResponse: { nodes: agentWithSteps, connections: DEFAULT_CONNECTIONS },
       });
       const result = await node.execute.call(mock);
-      const trace = result[0][0].json._miboTrace as IDataObject;
+      const summary = result[0][0].json._miboTrace as IDataObject;
 
-      expect(trace.toolCallsSent).toBe(0);
-      expect(trace.toolCallsWarning).toBeUndefined();
+      expect(summary.trace).toMatchObject({ toolCallsSent: 0 });
+      expect(summary.recommendations).not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ code: 'enable_intermediate_steps' })]),
+      );
     });
 
-    it('passes input items through unchanged with _miboTrace appended', async () => {
+    it('returns one structured trace summary by default', async () => {
       const { mock } = createMockExecuteFunctions({
         inputItems: [{ json: { message: 'first' } }, { json: { message: 'second' } }],
       });
       const result = await node.execute.call(mock);
+
+      expect(result[0]).toHaveLength(1);
+      expect(result[0][0].json.message).toBeUndefined();
+      expect(result[0][0].pairedItem).toEqual([{ item: 0 }, { item: 1 }]);
+
+      const summary = result[0][0].json._miboTrace as IDataObject;
+      const trace = summary.trace as IDataObject;
+      const nodes = trace.nodes as IDataObject[];
+      const recommendations = summary.recommendations as IDataObject[];
+
+      expect(summary).toMatchObject({
+        sent: true,
+        traceId: 'trace-id-123',
+        requestId: 'exec-1',
+        requestIdSource: 'executionId',
+        miboUrl: 'https://app.mibo-ai.com',
+      });
+      expect(trace).toMatchObject({ spansSent: 4, toolCallsSent: 0 });
+      expect(nodes).toEqual(
+        expect.arrayContaining([
+          { name: 'Webhook', status: 'success', itemsCaptured: 1 },
+          { name: 'AI Agent', status: 'success', itemsCaptured: 1 },
+          {
+            name: 'Google Gemini Chat Model',
+            status: 'success',
+            itemsCaptured: 0,
+          },
+        ]),
+      );
+      expect(recommendations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ code: 'enable_intermediate_steps' }),
+        ]),
+      );
+    });
+
+    it('includes every original input item when passthrough is enabled', async () => {
+      const { mock } = createMockExecuteFunctions({
+        params: { options: { includeInputData: true } },
+        inputItems: [{ json: { message: 'first' } }, { json: { message: 'second' } }],
+      });
+      const result = await node.execute.call(mock);
+
       expect(result[0]).toHaveLength(2);
       expect(result[0][0].json.message).toBe('first');
       expect(result[0][1].json.message).toBe('second');
-      expect((result[0][0].json._miboTrace as IDataObject).sent).toBe(true);
+      expect((result[0][0].json._miboTrace as IDataObject).trace).toBeDefined();
     });
 
-    it('redacts captured values before sending while preserving input items', async () => {
+    it('redacts captured values before sending while preserving opted-in input items', async () => {
       const inputItems = [{ json: { password: 'workflow-password', keep: 'unchanged' } }];
       const { mock } = createMockExecuteFunctions({
         inputItems,
+        params: { options: { includeInputData: true } },
         itemsProxy: {
           Webhook: [{ body: 'safe' }],
           'HTTP Request': [{ headers: { authorization: 'Bearer secret' }, password: 'output-secret' }],
@@ -376,6 +434,14 @@ describe('MiboTesting.execute', () => {
       expect(properties.find((property) => property.name === 'redactionFields')?.displayName).toBe(
         'Fields to Protect',
       );
+      expect(properties.find((property) => property.name === 'requestId')?.displayName).toBe(
+        'Request ID Override',
+      );
+      const options = properties.find((property) => property.name === 'options');
+      expect(options?.options?.find((option) => option.name === 'includeInputData')).toMatchObject({
+        displayName: 'Include Input Data in Output',
+        default: false,
+      });
       expect(properties.find((property) => property.name === 'hostedDataProcessingNotice')?.type).toBe(
         'notice',
       );
@@ -443,20 +509,54 @@ describe('MiboTesting.execute', () => {
       expect(mockSendTrace).not.toHaveBeenCalled();
     });
 
-    it('explains that missing node output can be expected for an unselected branch', async () => {
+    it('returns a structured recommendation for nodes without output', async () => {
       const { mock } = createMockExecuteFunctions({
         itemsProxy: { Webhook: [{ body: 'data' }], 'HTTP Request': [{ ok: true }] },
       });
       const result = await node.execute.call(mock);
-      const trace = result[0][0].json._miboTrace as IDataObject;
-      expect(trace.nodesNotExecuted).toEqual(['AI Agent']);
-      expect(trace.warning).toBe(
-        'No output was available to capture for these nodes: AI Agent. This can be expected when an IF, Switch, or Filter branch is not selected, when a node receives or returns no items, or when its output is otherwise unavailable. n8n does not expose the exact reason here.',
+      const summary = result[0][0].json._miboTrace as IDataObject;
+      const trace = summary.trace as IDataObject;
+
+      expect(trace.nodes).toEqual(
+        expect.arrayContaining([
+          { name: 'AI Agent', status: 'skipped', itemsCaptured: 0 },
+        ]),
+      );
+      expect(summary.recommendations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'nodes_not_executed',
+            nodes: ['AI Agent'],
+          }),
+        ]),
       );
 
       const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
-      const agent = payload.spans.find((s) => s.name === 'AI Agent');
+      const agent = payload.spans.find((span) => span.name === 'AI Agent');
       expect(agent?.attributes['n8n.node.status']).toBe('skipped');
+    });
+
+    it('returns a structured recommendation when the payload approaches the limit', async () => {
+      const { mock } = createMockExecuteFunctions({
+        itemsProxy: {
+          Webhook: [{ body: 'x'.repeat(Math.ceil(MAX_PAYLOAD_SIZE_BYTES * 0.81)) }],
+          'HTTP Request': [{ response: 'ok' }],
+          'AI Agent': [{ output: 'response text' }],
+        },
+      });
+      const result = await node.execute.call(mock);
+      const summary = result[0][0].json._miboTrace as IDataObject;
+      const trace = summary.trace as IDataObject;
+
+      expect(trace.payloadSize).toMatch(/MB$/);
+      expect(summary.recommendations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            code: 'payload_size',
+            message: expect.stringContaining('close to the 10MB limit'),
+          }),
+        ]),
+      );
     });
   });
 
@@ -512,8 +612,12 @@ describe('MiboTesting.execute', () => {
       const { mock } = createMockExecuteFunctions({
         inputItems: [{ json: { headers: { 'x-request-id': 'header-id' } } }],
       });
-      await node.execute.call(mock);
+      const result = await node.execute.call(mock);
       expect(mockSendTrace.mock.calls[0][5]).toBe('header-id');
+      expect(result[0][0].json._miboTrace).toMatchObject({
+        requestId: 'header-id',
+        requestIdSource: 'x-request-id',
+      });
     });
 
     it('falls back to executionId when nothing else is found', async () => {
@@ -561,6 +665,26 @@ describe('MiboTesting.execute', () => {
       const trace = result[0][0].json._miboTrace as IDataObject;
       expect(trace.sent).toBe(false);
       expect(trace.error).toBe('Connection refused');
+    });
+
+    it('returns only the failed trace summary by default', async () => {
+      mockSendTrace.mockRejectedValue({ message: 'Connection refused' });
+      const { mock } = createMockExecuteFunctions({
+        continueOnFail: true,
+        inputItems: [
+          { json: { customer: 'hidden-from-output' } },
+          { json: { customer: 'also-hidden' } },
+        ],
+      });
+      const result = await node.execute.call(mock);
+
+      expect(result[0]).toHaveLength(1);
+      expect(result[0][0].json.customer).toBeUndefined();
+      expect(result[0][0].pairedItem).toEqual([{ item: 0 }, { item: 1 }]);
+      expect(result[0][0].json._miboTrace).toMatchObject({
+        sent: false,
+        error: 'Connection refused',
+      });
     });
   });
 });

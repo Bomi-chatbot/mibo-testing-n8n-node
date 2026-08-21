@@ -1,6 +1,6 @@
 ---
 name: n8n-node
-description: Edit the Mibo Testing n8n node or its credentials following the project's conventions — INodeType class, declarative parameters, NodeOperationError, this.helpers.httpRequest, passthrough invariant. Use when the user mentions editing the node, adding/changing a node parameter or credential field, changing the trace payload, or any work under `nodes/MiboTesting/` or `credentials/`.
+description: Edit the Mibo Testing n8n node or its credentials following the project's conventions — INodeType class, declarative parameters, NodeOperationError, this.helpers.httpRequest, and output-mode invariants. Use when the user mentions editing the node, adding/changing a node parameter or credential field, changing the trace payload, or any work under `nodes/MiboTesting/` or `credentials/`.
 metadata:
   version: "1.0.0"
 ---
@@ -26,7 +26,7 @@ credentials/
 
 ## Invariants
 
-1. **Passthrough**: every input item is forwarded unchanged with `_miboTrace` appended. Never drop, reorder, or mutate input fields.
+1. **Output modes**: return one `_miboTrace` summary by default. When input passthrough is enabled, forward every input item unchanged and in order with only `_miboTrace` appended.
 2. **n8n HTTP only**: `this.helpers.httpRequest` is the only outbound HTTP. No `axios`, no `fetch`, no `node-fetch` — community-node verification rejects them.
 3. **No runtime dependencies**: anything used at runtime must be a Node built-in or provided by n8n. Add to `devDependencies` / `peerDependencies` only.
 4. **Errors via `NodeOperationError`**: `throw new NodeOperationError(this.getNode(), message, { description, itemIndex })`. Never throw raw `Error`.
@@ -70,7 +70,7 @@ The API `POST /public/traces` is a server-side contract — treat it as a public
 - `parent_span_id` is wired via `utils.buildParentMap` (child → first source per output) and `builders.resolveCapturedAncestor` walks past filtered/excluded nodes so the visible tree stays connected.
 - Identity is HTTP-header-only: pass `requestId` to `sendTrace`, which sets `x-request-id`. The API reads `externalId` from that header, never from the body — do not add an `externalId` field back.
 
-All trace POSTs go as plain JSON. There is **no client-side compression** — `node:zlib` and other Node built-ins are blocked by the Verified Community Node scanner. The hard payload limit is `MAX_PAYLOAD_SIZE_BYTES` (10 MB) in `constants.ts`; the node warns in `_miboTrace` past 80%.
+All trace POSTs go as plain JSON. There is **no client-side compression** — `node:zlib` and other Node built-ins are blocked by the Verified Community Node scanner. The hard payload limit is `MAX_PAYLOAD_SIZE_BYTES` (10 MB) in `constants.ts`; the node adds a `payload_size` entry to `_miboTrace.recommendations` past 80%.
 
 ## Before finishing
 
