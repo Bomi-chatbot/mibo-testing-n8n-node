@@ -161,6 +161,41 @@ describe('MiboTesting.execute', () => {
       expect(byName['AI Agent'].attributes['n8n.node.status']).toBe('success');
     });
 
+    it('emits the executed Respond to Webhook status on the root span', async () => {
+      const workflowNodes = [
+        {
+          name: 'Webhook',
+          type: 'n8n-nodes-base.webhook',
+          parameters: { responseMode: 'responseNode' },
+        },
+        {
+          name: 'Respond to Customer',
+          type: 'n8n-nodes-base.respondToWebhook',
+          parameters: { options: {} },
+        },
+        {
+          name: 'Mibo Testing',
+          type: '@mibo-ai/n8n-nodes-mibo-testing.miboTesting',
+          parameters: {},
+        },
+      ];
+      const connections = {
+        Webhook: { main: [[{ node: 'Respond to Customer' }]] },
+        'Respond to Customer': { main: [[{ node: 'Mibo Testing' }]] },
+      };
+      const { mock } = createMockExecuteFunctions({
+        workflowResponse: { nodes: workflowNodes, connections },
+        itemsProxy: { Webhook: [{ body: 'hi' }] },
+      });
+
+      await node.execute.call(mock);
+
+      const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
+      const rootSpan = payload.spans.find((span) => span.parent_span_id === null);
+      expect(rootSpan?.name).toBe('Webhook');
+      expect(rootSpan?.attributes['http.response.status_code']).toBe(200);
+    });
+
     it('emits the language model as an output-less span but never the tool as a node', async () => {
       const { mock } = createMockExecuteFunctions();
       const result = await node.execute.call(mock);

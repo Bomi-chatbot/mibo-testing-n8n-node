@@ -7,6 +7,7 @@ n8n community node for **Mibo Testing** - a platform for semantic and procedural
 - **Canonical OTEL-shaped trace**: emits one span per executed workflow node in the Mibo Custom API shape (`{spans: [...]}`), the same shape the dashboard renders. Works on **n8n Cloud and self-hosted** — no OTel SDK, no exporter, no host-level config.
 - **Automatic workflow capture**: discovers every executed node via the n8n API (when credentials carry an n8n API key) or via an upstream `Get Workflow` node. Auto-utility nodes (`stickyNote`, `noOp`, `wait`, …) are excluded.
 - **Parent linking**: `parent_span_id` follows the n8n connection graph so traces render as the workflow structure.
+- **HTTP status capture**: when the Mibo node runs downstream of a single `Respond to Webhook` path, its static response code is emitted on the root span. The n8n default is captured as 200; dynamic expressions are omitted because their runtime value is not exposed to downstream nodes.
 - **Request-id correlation**: sets `x-request-id` from the manual override, then from incoming webhook headers, falling back to the n8n execution id.
 - **Passthrough**: input items pass through unchanged; only a `_miboTrace` summary is appended.
 
@@ -144,7 +145,8 @@ The node POSTs to `POST /public/traces` using the Mibo **Custom API** shape:
       "attributes": {
         "n8n.node.type": "n8n-nodes-base.webhook",
         "n8n.node.status": "success",
-        "n8n.node.output": "{\"body\":\"hi\"}"
+        "n8n.node.output": "{\"body\":\"hi\"}",
+        "http.response.status_code": 200
       }
     },
     {

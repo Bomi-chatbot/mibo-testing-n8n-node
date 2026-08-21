@@ -7,7 +7,12 @@ import type {
   JsonObject,
 } from 'n8n-workflow';
 import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
-import { buildCanonicalTracePayload, buildMetadata, extractToolCalls } from './builders';
+import {
+  buildCanonicalTracePayload,
+  buildMetadata,
+  extractToolCalls,
+  resolveHttpResponseStatus,
+} from './builders';
 import {
   AUTO_EXCLUDED_NODE_TYPES,
   DEFAULT_SERVER_URL,
@@ -350,6 +355,7 @@ export class MiboTesting implements INodeType {
 
     const parentMap = buildParentMap(connections);
     const toolCalls = extractToolCalls(redactedSources);
+    const httpResponseStatus = resolveHttpResponseStatus(workflowNodes, parentMap, selfNodeName);
 
     const tracePayload = buildCanonicalTracePayload(
       redactedSources,
@@ -358,6 +364,7 @@ export class MiboTesting implements INodeType {
       platformId,
       parentMap,
       toolCalls,
+      httpResponseStatus,
     );
 
     // Agents that have tools wired but won't expose them (returnIntermediateSteps off).

@@ -7,6 +7,7 @@ import type {
   MetadataFields,
   SpanSource,
   ToolCall,
+  WorkflowNode,
 } from './types';
 import { safeStringify } from './utils';
 
@@ -103,6 +104,50 @@ function buildSpan(
   };
 }
 
+export function resolveHttpResponseStatus(
+  workflowNodes: WorkflowNode[],
+  parentMap: Record<string, string | null>,
+  miboNodeName: string,
+): number | undefined {
+  const nodesByName = new Map(workflowNodes.map((node) => [node.name, node]));
+  const seen = new Set<string>([miboNodeName]);
+  let current = parentMap[miboNodeName] ?? null;
+  let responseNode: WorkflowNode | undefined;
+  let responseWebhookFound = false;
+
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const node = nodesByName.get(current);
+    if (node?.type === 'n8n-nodes-base.respondToWebhook' && !responseNode) {
+      responseNode = node;
+    }
+    if (
+      node?.type === 'n8n-nodes-base.webhook' &&
+      node.parameters?.responseMode === 'responseNode'
+    ) {
+      responseWebhookFound = true;
+    }
+    current = parentMap[current] ?? null;
+  }
+
+  if (!responseNode || !responseWebhookFound) return undefined;
+
+  const options = responseNode.parameters?.options;
+  if (!options || typeof options !== 'object' || Array.isArray(options)) return 200;
+
+  const responseCode = (options as IDataObject).responseCode;
+  if (responseCode === undefined) return 200;
+  if (
+    typeof responseCode !== 'number' ||
+    !Number.isInteger(responseCode) ||
+    responseCode < 100 ||
+    responseCode > 599
+  ) {
+    return undefined;
+  }
+  return responseCode;
+}
+
 /**
  * Resolve a tool call's arguments, working around n8n issue #23501 where `toolInput`
  * can be empty while the real args live in `messageLog[].tool_calls[].args`.
@@ -164,6 +209,7 @@ export function buildCanonicalTracePayload(
   platformId: string,
   parentMap: Record<string, string | null>,
   toolCalls: ToolCall[] = [],
+  httpResponseStatus?: number,
 ): CanonicalTracePayload {
   const spanIdByNode: Record<string, string> = {};
   for (const s of sources) {
@@ -171,6 +217,11 @@ export function buildCanonicalTracePayload(
   }
 
   const spans = sources.map((s) => buildSpan(s, spanIdByNode, parentMap));
+
+  if (httpResponseStatus !== undefined) {
+    const rootSpan = spans.find((span) => span.parent_span_id === null);
+    if (rootSpan) rootSpan.attributes['http.response.status_code'] = httpResponseStatus;
+  }
 
   // Real tool invocations become child spans of their agent so the consumer
   // evaluates them via expected_tool_calls (gen_ai.tool.name + parent_span_id).
