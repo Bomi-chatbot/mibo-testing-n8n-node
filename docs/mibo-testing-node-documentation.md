@@ -2,6 +2,8 @@
 
 The Mibo Testing node captures every executed node in your n8n workflow and POSTs them as a canonical OTEL-shaped trace to the Mibo Testing API. Input items pass through unchanged; only a `_miboTrace` summary is appended.
 
+Trace processing is hosted by Mibo Testing, including for self-hosted n8n deployments. The node captures and protects observations; Mibo owns storage, assertions, pass/fail evaluation, smoke tests, trace-grounded test creation, and result history.
+
 ## Quick start
 
 1. Create credentials of type **Mibo Testing API** (see [Credentials](#credentials))
@@ -45,12 +47,28 @@ API keys are stored as password fields and never logged.
 | **Agent ID** | UUID of your agent in Mibo Testing. Leave empty if the API key is already scoped to a single agent. |
 | **Request ID** | Override the `x-request-ID` used to correlate this trace. Defaults to the incoming webhook header, falling back to the n8n execution ID. |
 | **Include Metadata** | When on, exposes a Metadata collection with **Environment**, **Version**, and **Additional Fields** (JSON). |
+| **Automatic Sensitive Data Protection** | Enabled by default. Protects common secrets and safe secret-name patterns before transmission. |
+| **Custom Sensitive Data Protection** | Disabled by default. Enables deep-search paths for domain-specific fields. |
+| **Fields to Protect** | Repeatable paths such as `email`, `customer.email`, or `customers.*.email`; every matching occurrence is protected. |
 
 ### Advanced options
 
 | Option | Default | Description |
 |--------|---------|-------------|
 | **Timeout (Seconds)** | 30 | Maximum time to wait for the Mibo Testing server to respond. |
+
+---
+
+## Capture capability matrix
+
+| Signal | Availability | Notes |
+|--------|--------------|-------|
+| Node name, type, parameters, and captured output | Observed | Sent in canonical spans when the supported n8n APIs expose them. |
+| Prompt, response, model, and token usage | Conditional | Depends on the executed node exposing those values in parameters or output. |
+| Tool calls and arguments | Conditional | Enable **Return Intermediate Steps** on the AI Agent. |
+| Exact node inputs, timing, and retries | Unavailable | The community node cannot access these reliably through supported APIs. |
+
+Do not interpret unavailable values as zero; the node does not infer them from adjacent outputs or POST duration.
 
 ---
 

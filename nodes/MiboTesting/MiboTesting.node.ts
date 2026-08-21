@@ -53,6 +53,13 @@ export class MiboTesting implements INodeType {
     usableAsTool: true,
     inputs: [NodeConnectionTypes.Main],
     outputs: [NodeConnectionTypes.Main],
+    hints: [
+      {
+        message: 'Trace sent successfully to Mibo. Access it at https://app.mibo-ai.com.',
+        location: 'outputPane',
+        whenToDisplay: 'afterExecution',
+      },
+    ],
     credentials: [
       {
         name: 'miboTestingApi',
@@ -94,6 +101,7 @@ export class MiboTesting implements INodeType {
         default: true,
         description:
           'Whether to hide common sensitive values and safe secret-name patterns such as passwords, API keys, tokens, and cookies before sending the trace',
+        hint: 'Enabled by default. Hides common secrets before the trace leaves n8n.',
       },
       {
         displayName: 'Custom Sensitive Data Protection',
@@ -103,6 +111,7 @@ export class MiboTesting implements INodeType {
         default: false,
         description:
           'Whether to hide values matching your custom field paths before sending the trace',
+        hint: 'Use this for domain-specific fields such as email or customer ID. Paths use deep search.',
       },
       {
         displayName: 'Fields to Protect',
@@ -130,6 +139,7 @@ export class MiboTesting implements INodeType {
                 required: true,
                 description:
                   "A dot-separated path for a deep search, not a single picked field. Every matching path is hidden; use '*' for one object or array level, such as 'customer.email' or 'customers.*.email'.",
+                hint: "Examples: 'email', 'customer.email', or 'customers.*.email'. Every matching occurrence is protected.",
                 placeholder: 'e.g. customer.email',
               },
             ],

@@ -19,6 +19,19 @@ Get the Mibo Testing node sending traces in about 30 seconds.
 
 That's it. No filters, no per-node config, no host-level setup.
 
+## What leaves n8n
+
+The node captures available workflow observations, applies Sensitive Data Protection to cloned parameters, outputs, tool arguments, and user metadata, then sends the canonical trace to **hosted Mibo Testing**. This applies to self-hosted n8n as well. The original workflow items are passed through unchanged.
+
+Automatic Sensitive Data Protection is enabled by default. Custom Sensitive Data Protection is optional and uses deep-search paths such as `email`, `customer.email`, or `customers.*.email`; every matching occurrence is protected before transmission. Encryption at rest does not replace capture-time protection.
+
+## After the first trace
+
+- **Passive evaluation:** configure applicable assertions in Mibo and run the workflow; Mibo evaluates the captured trace and records pass/fail results.
+- **Active authoring and validation:** use Mibo smoke tests or trace-grounded test creation to exercise or derive tests from the workflow.
+
+The node captures observations; Mibo owns assertions, replay-like smoke-test execution, test authoring, result history, and reporting. Exact per-node inputs, retries, and timing are unavailable through the supported community-node APIs and are not inferred.
+
 ## Troubleshooting
 
 ### Payload too large

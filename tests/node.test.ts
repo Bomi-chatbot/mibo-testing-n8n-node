@@ -341,6 +341,24 @@ describe('MiboTesting.execute', () => {
       expect(properties.find((property) => property.name === 'redactionFields')?.displayName).toBe(
         'Fields to Protect',
       );
+      expect(properties.find((property) => property.name === 'hostedDataProcessingNotice')?.type).toBe(
+        'notice',
+      );
+      expect(properties.find((property) => property.name === 'automaticRedaction')?.hint).toContain(
+        'Enabled by default',
+      );
+      expect(properties.find((property) => property.name === 'manualRedaction')?.hint).toContain(
+        'deep search',
+      );
+      expect(node.description.hints).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: 'Trace sent successfully to Mibo. Access it at https://app.mibo-ai.com.',
+            whenToDisplay: 'afterExecution',
+            location: 'outputPane',
+          }),
+        ]),
+      );
     });
 
     it('applies manual redaction to tool arguments without enabling automatic rules', async () => {

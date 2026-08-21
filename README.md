@@ -12,6 +12,31 @@ n8n community node for **Mibo Testing** - a platform for semantic and procedural
 
 > New here? Start with the [Quick Start Guide](./docs/quick-start.md) — 30-second setup plus troubleshooting for the most common errors (payload too large, wrong node names, API key issues).
 
+## Product boundary
+
+The n8n node is a capture and transport integration. It collects observations available through supported n8n APIs, protects configured sensitive values inside n8n, translates them into canonical OTLP-shaped spans, and sends them to **hosted Mibo Testing**. Self-hosted n8n still sends trace data to the hosted Mibo service.
+
+Mibo owns trace storage, assertions, pass/fail evaluation, smoke tests, trace-grounded test creation, and result history. The node does not invoke workflows, store fixtures, schedule tests, or implement an assertion engine.
+
+```text
+n8n workflow → Mibo Testing node → hosted Mibo
+               capture + protect    store + evaluate
+```
+
+### Capture capability matrix
+
+| Signal | Availability | Notes |
+|--------|--------------|-------|
+| Node display name, type, configured parameters, and captured output | Observed | Parameters and output are represented in each canonical span. |
+| Prompt, response, model, and token usage | Conditionally observed | Available when the executed n8n node exposes them in its parameters or output. |
+| Tool calls and arguments | Conditionally observed | AI Agent must have **Return Intermediate Steps** enabled. |
+| AI model and memory sub-nodes | Conditionally observed | Emitted as output-less spans when their parent exposes the connection. |
+| Exact input consumed by every node | Unavailable | A community node cannot reliably reconstruct inputs across branches, merges, item linking, and sub-nodes. |
+| Per-node timing and workflow latency | Unavailable | Collector POST time is not workflow execution time. |
+| Retry or attempt count | Unavailable | Duplicate outputs and tool calls are not reliable retry evidence. |
+
+Unavailable signals are omitted or reported as unavailable; they are never inferred as zero or reconstructed from neighboring outputs.
+
 ## Installation
 
 ### Community Nodes (Recommended)
@@ -75,6 +100,10 @@ Sensitive data protection is applied locally to cloned node parameters, outputs,
 Custom paths use a deep search within each captured value; they are not a pick for one field. A path such as `customer.email` protects every occurrence of that sequence at any depth, including `metadata.customer.email`. To protect only a specific branch, include it in the path, such as `metadata.customer.email`. A single field name such as `email` matches every `email` field at any depth, while `customers.*.email` matches `email` inside every element of `customers`.
 
 Capture-time protection is still required even when Mibo or n8n storage uses encryption at rest: encryption after transmission does not prevent sensitive values from passing through request logs, queues, or error tooling before storage.
+
+### What to do with a trace
+
+For passive evaluation, run the real n8n workflow and let Mibo evaluate assertions against the resulting trace. For active authoring and validation, use Mibo smoke tests or trace-grounded test creation to exercise or derive tests from the configured workflow. Assertions, pass/fail results, and history remain in Mibo rather than in the n8n node.
 
 ### Advanced Options
 
