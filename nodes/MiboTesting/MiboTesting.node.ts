@@ -21,6 +21,7 @@ import {
   parseErrorResponse,
   sendTrace,
 } from './mibo-client';
+import { buildRedactionPolicy, redactCapture } from './redaction';
 import type { NodeOptions, SpanSource } from './types';
 import {
   agentsMissingIntermediateSteps,
@@ -84,6 +85,56 @@ export class MiboTesting implements INodeType {
         noDataExpression: true,
         default: false,
         description: 'Whether to include additional metadata with the trace',
+      },
+      {
+        displayName: 'Automatic Sensitive Data Protection',
+        name: 'automaticRedaction',
+        type: 'boolean',
+        noDataExpression: true,
+        default: true,
+        description:
+          'Whether to hide common sensitive values and safe secret-name patterns such as passwords, API keys, tokens, and cookies before sending the trace',
+      },
+      {
+        displayName: 'Custom Sensitive Data Protection',
+        name: 'manualRedaction',
+        type: 'boolean',
+        noDataExpression: true,
+        default: false,
+        description:
+          'Whether to hide values matching your custom field paths before sending the trace',
+      },
+      {
+        displayName: 'Fields to Protect',
+        name: 'redactionFields',
+        type: 'fixedCollection',
+        typeOptions: {
+          multipleValues: true,
+        },
+        default: {},
+        displayOptions: {
+          show: {
+            manualRedaction: [true],
+          },
+        },
+        options: [
+          {
+            displayName: 'Field Paths',
+            name: 'fieldPaths',
+            values: [
+              {
+                displayName: 'Path',
+                name: 'path',
+                type: 'string',
+                default: '',
+                required: true,
+                description:
+                  "A dot-separated path for a deep search, not a single picked field. Every matching path is hidden; use '*' for one object or array level, such as 'customer.email' or 'customers.*.email'.",
+                placeholder: 'e.g. customer.email',
+              },
+            ],
+          },
+        ],
       },
       {
         displayName: 'Metadata',
@@ -166,7 +217,19 @@ export class MiboTesting implements INodeType {
 
     const platformId = this.getNodeParameter('platformId', 0, '') as string;
     const includeMetadata = this.getNodeParameter('includeMetadata', 0, false) as boolean;
+    const automaticRedaction = this.getNodeParameter('automaticRedaction', 0, true) as boolean;
+    const manualRedaction = this.getNodeParameter('manualRedaction', 0, false) as boolean;
+    const redactionFields = this.getNodeParameter('redactionFields', 0, {}) as IDataObject;
     const options = this.getNodeParameter('options', 0, {}) as NodeOptions;
+
+    let redactionPolicy;
+    try {
+      redactionPolicy = buildRedactionPolicy(automaticRedaction, manualRedaction, redactionFields);
+    } catch (error) {
+      throw new NodeOperationError(this.getNode(), 'Invalid redaction field path', {
+        description: error instanceof Error ? error.message : 'Use dot-separated field paths.',
+      });
+    }
 
     if (platformId && !isValidUUID(platformId)) {
       throw new NodeOperationError(this.getNode(), 'Agent ID must be a valid UUID', {
@@ -269,13 +332,19 @@ export class MiboTesting implements INodeType {
     const manualRequestId = this.getNodeParameter('requestId', 0, '') as string;
     const requestId = manualRequestId || extractedRequestId || this.getExecutionId() || undefined;
 
+    const {
+      sources: redactedSources,
+      metadata: redactedMetadata,
+      summary,
+    } = redactCapture(sources, metadata, redactionPolicy);
+
     const parentMap = buildParentMap(connections);
-    const toolCalls = extractToolCalls(sources);
+    const toolCalls = extractToolCalls(redactedSources);
 
     const tracePayload = buildCanonicalTracePayload(
-      sources,
+      redactedSources,
       workflowId,
-      metadata,
+      redactedMetadata,
       platformId,
       parentMap,
       toolCalls,
@@ -309,9 +378,10 @@ export class MiboTesting implements INodeType {
           platformId: platformId || 'resolved-from-api-key',
           requestId: requestId || null,
           timestamp,
-          spansSent: sources.filter((s) => s.items.length > 0).length,
+          spansSent: redactedSources.filter((s) => s.items.length > 0).length,
           toolCallsSent: toolCalls.length,
           payloadSize: payloadSizeFormatted,
+          redaction: summary as unknown as IDataObject,
         };
 
         if (payloadWarning) {

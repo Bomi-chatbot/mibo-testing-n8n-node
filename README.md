@@ -66,6 +66,15 @@ If neither source is available, the node errors with a link to <https://docs.mib
 | **Agent ID** | Your agent UUID in Mibo Testing. Leave empty if the API key is already scoped to a single agent. |
 | **Request ID** | Override the `x-request-id` used to correlate this trace. Defaults to the incoming webhook header, falling back to the n8n execution id. |
 | **Include Metadata** | Add environment, version, and custom fields to the trace metadata. |
+| **Automatic Sensitive Data Protection** | Enabled by default. Replaces common secret-bearing keys and safe name patterns such as `databasePassword`, `myApiKey`, `aiKey`, `openAiKey`, authorization headers, cookies, access tokens, refresh tokens, and private keys with `[REDACTED]` before transmission. Token-usage metrics such as `promptTokens` and `totalTokens` are preserved. |
+| **Custom Sensitive Data Protection** | Disabled by default. Enables custom field paths for customer or identity data. |
+| **Fields to Protect** | Repeatable dot-separated paths shown when Custom Sensitive Data Protection is enabled, such as `customer.email` or `customers.*.email`. Arrays are traversed transparently. |
+
+Sensitive data protection is applied locally to cloned node parameters, outputs, tool arguments, and user-provided metadata before the canonical trace is serialized or sent. Input items, node names, workflow identifiers, correlation headers, and the returned `_miboTrace` summary are not protected or mutated. Automatic and custom rules are independent; enabling both applies their union. Invalid paths stop the transmission instead of falling back to an unprotected payload.
+
+Custom paths use a deep search within each captured value; they are not a pick for one field. A path such as `customer.email` protects every occurrence of that sequence at any depth, including `metadata.customer.email`. To protect only a specific branch, include it in the path, such as `metadata.customer.email`. A single field name such as `email` matches every `email` field at any depth, while `customers.*.email` matches `email` inside every element of `customers`.
+
+Capture-time protection is still required even when Mibo or n8n storage uses encryption at rest: encryption after transmission does not prevent sensitive values from passing through request logs, queues, or error tooling before storage.
 
 ### Advanced Options
 

@@ -74,6 +74,9 @@ function createMockExecuteFunctions(overrides: MockOverrides = {}) {
     platformId: '',
     includeMetadata: false,
     metadata: {},
+    automaticRedaction: true,
+    manualRedaction: false,
+    redactionFields: {},
     options: {},
     ...overrides.params,
   };
@@ -303,6 +306,88 @@ describe('MiboTesting.execute', () => {
       expect(result[0][0].json.message).toBe('first');
       expect(result[0][1].json.message).toBe('second');
       expect((result[0][0].json._miboTrace as IDataObject).sent).toBe(true);
+    });
+
+    it('redacts captured values before sending while preserving input items', async () => {
+      const inputItems = [{ json: { password: 'workflow-password', keep: 'unchanged' } }];
+      const { mock } = createMockExecuteFunctions({
+        inputItems,
+        itemsProxy: {
+          Webhook: [{ body: 'safe' }],
+          'HTTP Request': [{ headers: { authorization: 'Bearer secret' }, password: 'output-secret' }],
+          'AI Agent': [{ output: 'done' }],
+        },
+      });
+      const result = await node.execute.call(mock);
+
+      const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
+      const httpSpan = payload.spans.find((span) => span.name === 'HTTP Request');
+      expect(httpSpan?.attributes['n8n.node.output']).toContain('[REDACTED]');
+      expect(result[0][0].json).toMatchObject(inputItems[0].json);
+      expect((result[0][0].json._miboTrace as IDataObject).redaction).toMatchObject({
+        automaticEnabled: true,
+        manualEnabled: false,
+      });
+    });
+
+    it('declares public sensitive-data protection controls', () => {
+      const properties = node.description.properties;
+      expect(properties.find((property) => property.name === 'automaticRedaction')?.displayName).toBe(
+        'Automatic Sensitive Data Protection',
+      );
+      expect(properties.find((property) => property.name === 'manualRedaction')?.displayName).toBe(
+        'Custom Sensitive Data Protection',
+      );
+      expect(properties.find((property) => property.name === 'redactionFields')?.displayName).toBe(
+        'Fields to Protect',
+      );
+    });
+
+    it('applies manual redaction to tool arguments without enabling automatic rules', async () => {
+      const agentWithSteps = DEFAULT_WORKFLOW_NODES.map((n) =>
+        n.name === 'AI Agent'
+          ? { ...n, parameters: { options: { returnIntermediateSteps: true } } }
+          : n,
+      );
+      const { mock } = createMockExecuteFunctions({
+        params: {
+          automaticRedaction: false,
+          manualRedaction: true,
+          redactionFields: { fieldPaths: [{ path: 'email' }] },
+        },
+        workflowResponse: { nodes: agentWithSteps, connections: DEFAULT_CONNECTIONS },
+        itemsProxy: {
+          Webhook: [{ body: 'hi' }],
+          'HTTP Request': [{ ok: true }],
+          'AI Agent': [
+            {
+              output: 'done',
+              intermediateSteps: [
+                { action: { tool: 'lookup', toolInput: { email: 'private@example.com' } } },
+              ],
+            },
+          ],
+        },
+      });
+      await node.execute.call(mock);
+
+      const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
+      const toolSpan = payload.spans.find((span) => span.attributes['gen_ai.tool.name'] === 'lookup');
+      expect(toolSpan?.attributes['gen_ai.tool.call.arguments']).toBe(
+        '{"email":"[REDACTED]"}',
+      );
+    });
+
+    it('refuses invalid manual paths before sending a trace', async () => {
+      const { mock } = createMockExecuteFunctions({
+        params: {
+          manualRedaction: true,
+          redactionFields: { fieldPaths: [{ path: 'customer..email' }] },
+        },
+      });
+
+      await expect(node.execute.call(mock)).rejects.toThrow(NodeOperationError);
+      expect(mockSendTrace).not.toHaveBeenCalled();
     });
 
     it('marks unreachable nodes as skipped and surfaces them in _miboTrace.nodesNotExecuted', async () => {

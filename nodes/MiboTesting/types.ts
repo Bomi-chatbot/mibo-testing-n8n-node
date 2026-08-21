@@ -87,3 +87,22 @@ export interface ToolCall {
   /** Display name of the agent node that called it — the parent span. */
   agentNodeName: string;
 }
+
+export interface RedactionPolicy {
+  automaticEnabled: boolean;
+  manualEnabled: boolean;
+  selectors: string[];
+}
+
+export interface RedactionResult {
+  value: unknown;
+  matches: number;
+}
+
+export interface RedactionSummary {
+  automaticEnabled: boolean;
+  manualEnabled: boolean;
+  valuesRedacted: number;
+  automaticMatches: number;
+  manualMatches: number;
+}
