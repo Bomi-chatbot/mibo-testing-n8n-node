@@ -54,7 +54,7 @@ Authoritative validator: `npx @n8n/scan-community-package @mibo-ai/n8n-nodes-mib
 - If the service supports OAuth, include an OAuth credential variant.
 
 ### Node class description
-- `inputs` / `outputs` use string literals `['main']`, **not** `NodeConnectionTypes.Main`. See `agents/style.md`.
+- `inputs` / `outputs` must follow the canonical form enforced by the strict `@n8n/node-cli` configuration. The current release uses `NodeConnectionTypes.Main` for regular connections.
 
 ### Errors
 - **HTTP/API failures use `NodeApiError`**, not `NodeOperationError`. n8n's manual review requires it for calls to external APIs (the Mibo Testing API, the n8n REST API): it preserves the HTTP status code and full response body in the execution UI, which helps users diagnose failures. Pass the original error so that detail survives: `throw new NodeApiError(this.getNode(), error as JsonObject, { message, description })`. Applies to the trace-POST `catch` in `MiboTesting.node.ts` and the `fetchWorkflow` `catch` in `utils.ts`.
@@ -67,9 +67,9 @@ Authoritative validator: `npx @n8n/scan-community-package @mibo-ai/n8n-nodes-mib
 
 ## Linter
 
-`pnpm run check` runs Biome + `eslint-plugin-n8n-nodes-base`. The n8n plugin only checks `package.json`, `nodes/**`, `credentials/**`. Both must pass before commit.
+`pnpm run check` runs Oxfmt plus the unmodified strict configuration supplied by `@n8n/node-cli`. The n8n rules check `package.json`, `nodes/**`, and `credentials/**`. Both must pass before commit.
 
-The plugin's `cred-class-field-documentation-url-miscased` autofix is broken (it camelCases the URL); that one rule is disabled in `.eslintrc.js`. Don't re-enable without testing.
+The official configuration disables `cred-class-field-documentation-url-miscased` because its autofix camelCases valid URLs. Don't re-enable without testing.
 
 For the full Cloud-verification scan (catches env vars, restricted imports, peerDependencies), run against the published tarball:
 

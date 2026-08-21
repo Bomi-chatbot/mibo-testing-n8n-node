@@ -134,7 +134,7 @@ The node POSTs to `POST /public/traces` using the Mibo **Custom API** shape:
 
 ### Prerequisites
 
-- Node.js >= 20
+- Node.js ^20.19.0 or >= 22.12.0
 - pnpm >= 10
 - Docker (for the default dev flow)
 

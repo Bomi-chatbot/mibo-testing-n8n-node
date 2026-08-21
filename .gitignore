@@ -11,3 +11,4 @@ coverage/
 .claude/skills/
 .agents/skills/
 .local/
+skills-lock.json

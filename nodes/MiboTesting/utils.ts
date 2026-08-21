@@ -63,7 +63,9 @@ export async function fetchWorkflow(
     };
   } catch (error) {
     if (error instanceof NodeOperationError) {
-      throw error;
+      throw new NodeOperationError(node.getNode(), error.message, {
+        description: error.description ?? undefined,
+      });
     }
 
     throw new NodeApiError(node.getNode(), error as JsonObject, {

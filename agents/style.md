@@ -4,20 +4,20 @@ Load when writing or editing any TypeScript file (`nodes/**`, `credentials/**`, 
 
 ## Formatting
 
-Biome owns formatting and most lint. Run `pnpm run check` to verify, `pnpm run check:fix` to apply.
+Oxfmt owns formatting and the official n8n ESLint configuration owns lint. Run `pnpm run check` to verify, `pnpm run check:fix` to apply fixes.
 
-`pnpm run check` also runs `eslint-plugin-n8n-nodes-base` (config in `.eslintrc.js`) — it's the *only* ESLint use in the repo and exists because Biome can't express n8n's community-node rules (display names, parameter descriptions, credential URLs, etc.). When in doubt about whether a rule is Biome or the n8n plugin, check the error prefix: `lint/*` is Biome, `n8n-nodes-base/*` is the plugin.
+`pnpm run check` also runs the unmodified strict configuration supplied by `@n8n/node-cli` (`eslint.config.mjs`). It includes the n8n community-node rules for display names, parameter descriptions, credential URLs, and Cloud verification.
 
-In the node class description (`INodeTypeDescription`), use **string literals** for `inputs` / `outputs` (e.g. `['main']`), not the `NodeConnectionTypes` enum — the n8n linter enforces this to match the canonical form in n8n-nodes-base.
+In the node class description (`INodeTypeDescription`), follow the canonical `inputs` / `outputs` form enforced by the strict `@n8n/node-cli` configuration. The current release uses `NodeConnectionTypes.Main` for regular connections.
 
 - Single quotes for strings.
 - Trailing commas.
 - Semicolons.
 - 2-space indent.
 - 100-char line width.
-- Sorted imports (Biome reorders them — don't fight it).
+- Sorted imports (Oxfmt reorders them — don't fight it).
 
-Never hand-format. If Biome disagrees with you, Biome wins.
+Never hand-format. If Oxfmt disagrees with you, Oxfmt wins.
 
 ## TypeScript
 

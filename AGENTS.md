@@ -7,7 +7,7 @@ Setup and commands live in [README.md](./README.md). This file is _rules_ and th
 ## Topic rules — load when relevant
 
 - Git operations (branch, commit, PR, conflicts, revert) → [agents/git.md](./agents/git.md)
-- Code style (Biome, TypeScript conventions, naming, comments) → [agents/style.md](./agents/style.md)
+- Code style (Oxfmt, TypeScript conventions, naming, comments) → [agents/style.md](./agents/style.md)
 - Security & correctness invariants (passthrough, HTTP helpers, supply chain, secret hygiene, payload contract) → [agents/security.md](./agents/security.md)
 - n8n community node rules (verification, UX, copy, casing, allowed APIs) → [agents/n8n-guidelines.md](./agents/n8n-guidelines.md)
 
@@ -16,7 +16,7 @@ Touching multiple topics? Load every relevant file. The per-topic files contain 
 ## Toolchain
 
 - Node ≥ 20, pnpm ≥ 10 (enforced by `engines` and a `preinstall` guard). Never use npm or yarn.
-- Lint/format: Biome — see [agents/style.md](./agents/style.md).
+- Lint/format: Oxfmt and the official n8n ESLint configuration — see [agents/style.md](./agents/style.md).
 - Tests: Vitest — see the `vitest-n8n` skill.
 
 ## Global rules
@@ -26,6 +26,7 @@ Touching multiple topics? Load every relevant file. The per-topic files contain 
 3. **NEVER read `.env`**. Only `.env.example`.
 4. **Release-please owns versioning**: never edit `package.json` `version` or `CHANGELOG.md` by hand. Never push tags manually. CI is the only publisher.
 5. **Capture learnings back into the docs**: when a rule, pattern, or constraint emerges during work, fold it into the right file in the same change — agent behavior into `AGENTS.md` or `agents/*.md`, procedural how-to into a `skills/<name>/SKILL.md`. Mention the doc edit in the commit so it's intentional.
+6. **Public-repository boundary**: never copy private-repository paths, internal architecture, planning content, issue links, identifiers, or other non-public details into this repository. Use this repository and public sources as the basis for committed documentation, and describe external contracts generically.
 
 ## Workflow
 

@@ -40,7 +40,7 @@ Release-please reads every conventional commit since the last release tag and pi
 | `perf: stream gzip instead of buffering` | **patch** |
 | `feat!: remove deprecated targetNodes string format` | **major** (0.2.1 → 1.0.0) |
 | Body containing `BREAKING CHANGE: removed credential field n8nApiKey` | **major** |
-| `chore: bump biome to 2.5.0` | **none** (no Release PR update) |
+| `chore: bump formatter to the next minor` | **none** (no Release PR update) |
 | `docs: clarify auto-detect setup` | **none** |
 | `test: cover gzip boundary` | **none** |
 | `ci: pin pnpm to 10.16.1` | **none** |

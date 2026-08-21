@@ -6,7 +6,7 @@ import type {
   INodeTypeDescription,
   JsonObject,
 } from 'n8n-workflow';
-import { NodeApiError, NodeOperationError } from 'n8n-workflow';
+import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
 import { buildCanonicalTracePayload, buildMetadata, extractToolCalls } from './builders';
 import {
   AUTO_EXCLUDED_NODE_TYPES,
@@ -37,7 +37,10 @@ export class MiboTesting implements INodeType {
   description: INodeTypeDescription = {
     displayName: 'Mibo Testing',
     name: 'miboTesting',
-    icon: 'file:mibo-testing.svg',
+    icon: {
+      light: 'file:mibo-testing.svg',
+      dark: 'file:mibo-testing-dark.svg',
+    },
     group: ['output'],
     version: 1,
     description:
@@ -45,8 +48,10 @@ export class MiboTesting implements INodeType {
     defaults: {
       name: 'Mibo Testing',
     },
-    inputs: ['main'],
-    outputs: ['main'],
+    subtitle: 'Capture workflow trace',
+    usableAsTool: true,
+    inputs: [NodeConnectionTypes.Main],
+    outputs: [NodeConnectionTypes.Main],
     credentials: [
       {
         name: 'miboTestingApi',
