@@ -399,12 +399,12 @@ export class MiboTesting implements INodeType {
         }
 
         if (nodesNotExecuted.length > 0) {
-          traceInfo.warning = `Some nodes did not execute in this workflow branch: ${nodesNotExecuted.join(', ')}`;
+          traceInfo.warning = `No output was available to capture for these nodes: ${nodesNotExecuted.join(', ')}. This can be expected when an IF, Switch, or Filter branch is not selected, when a node receives or returns no items, or when its output is otherwise unavailable. n8n does not expose the exact reason here.`;
           traceInfo.nodesNotExecuted = nodesNotExecuted;
         }
 
         if (agentsNeedingSteps.length > 0) {
-          traceInfo.toolCallsWarning = `Turn on 'Return Intermediate Steps' on these agent nodes so tool-call assertions can see which tools ran: ${agentsNeedingSteps.join(', ')}.`;
+          traceInfo.toolCallsWarning = `Tool-call data may be incomplete for these agent nodes: ${agentsNeedingSteps.join(', ')}. Turn on 'Return Intermediate Steps' so tool-call assertions can see which tools ran.`;
         }
 
         returnData.push({

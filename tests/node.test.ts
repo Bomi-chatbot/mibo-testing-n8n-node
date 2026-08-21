@@ -408,13 +408,16 @@ describe('MiboTesting.execute', () => {
       expect(mockSendTrace).not.toHaveBeenCalled();
     });
 
-    it('marks unreachable nodes as skipped and surfaces them in _miboTrace.nodesNotExecuted', async () => {
+    it('explains that missing node output can be expected for an unselected branch', async () => {
       const { mock } = createMockExecuteFunctions({
         itemsProxy: { Webhook: [{ body: 'data' }], 'HTTP Request': [{ ok: true }] },
       });
       const result = await node.execute.call(mock);
       const trace = result[0][0].json._miboTrace as IDataObject;
       expect(trace.nodesNotExecuted).toEqual(['AI Agent']);
+      expect(trace.warning).toBe(
+        'No output was available to capture for these nodes: AI Agent. This can be expected when an IF, Switch, or Filter branch is not selected, when a node receives or returns no items, or when its output is otherwise unavailable. n8n does not expose the exact reason here.',
+      );
 
       const payload = mockSendTrace.mock.calls[0][3] as CanonicalTracePayload;
       const agent = payload.spans.find((s) => s.name === 'AI Agent');
