@@ -2,13 +2,13 @@
 
 Load when touching anything that handles workflow data, credentials, outbound HTTP, dependencies, logs, or the published payload.
 
-## Passthrough invariant
+## Output invariant
 
 The node observes a workflow; it does **not** participate in it.
 
-- Every input item flows to output unchanged. Never drop, reorder, or mutate input fields.
-- The only addition to each output item is the `_miboTrace` metadata key.
-- If the trace POST fails, the input still passes through. The user's workflow must not break because Mibo is unreachable. `continueOnFail()` controls whether the error becomes a visible item or is silently logged into `_miboTrace.error`.
+- The node returns one `_miboTrace` summary by default so captured workflow data is not repeated in the output pane.
+- When `Include Input Data in Output` is enabled, every input item flows to output unchanged and in order; `_miboTrace` is the only addition.
+- If the trace POST fails and `continueOnFail()` is enabled, use the configured output mode and surface the clean message in `_miboTrace.error`. Otherwise throw the appropriate n8n error.
 
 ## n8n HTTP helpers only
 
@@ -45,13 +45,14 @@ The node observes a workflow; it does **not** participate in it.
 - **Capture scope = what the data proxy can reach, but every node still becomes a span.** Node output is read via `proxy.$items(nodeName)`, which only resolves nodes on the current `main` branch. Two things follow:
   - The Mibo Testing node **itself** is excluded entirely. It's matched by `this.getNode().name`, robust to renames, and is never a span.
   - **AI sub-nodes** run *inside* their parent's call, so `$items` never exposes their output even though the n8n UI shows it. `buildSubNodeNames` detects them as sources of a non-`main` connection. The **language model and memory** are emitted as output-less `success` spans (they always run with the agent) so `node_call` can match them by `name`. **Tools** (`ai_tool`, via `buildToolNodeNames`) are **excluded** from node spans — a tool is not a node; it appears only as a real tool-call (see next bullet).
-  - The "did not execute" warning in `_miboTrace` is for the n8n user only and is not part of the trace payload. It's reserved for genuine `main`-graph nodes that produced no data, such as an untaken IF branch. Self and sub-nodes are kept out of it.
-- **Tool calls come from the agent's `intermediateSteps`, never from wiring.** Verifying *which* tools an agent invoked is the point of agent testing, so a tool span must reflect a real invocation, not a wired connection. `extractToolCalls` reads each captured agent's `intermediateSteps` output and emits one child span per call: `gen_ai.tool.name` = `action.tool`, `gen_ai.tool.call.arguments` = the args, `parent_span_id` = the agent span. The consumer evaluates these via `expected_tool_calls`. Args follow a fallback chain for n8n issue #23501 where `toolInput` can be empty: `toolInput` → `messageLog[].tool_calls[].args` → omitted. This needs **"Return Intermediate Steps" enabled on the AI Agent node**. `agentsMissingIntermediateSteps` checks each tool-wired agent's `options.returnIntermediateSteps` param and, when off, sets `_miboTrace.toolCallsWarning` naming those agents. Key distinction: an agent that simply called no tool this run is **not** a warning — only one whose flag is off, since that's the config gap that blinds every tool assertion. Never infer "off" from an empty `intermediateSteps`. And never mark a node as a tool from its `ai_tool` wiring — that always-passes `MUST_CALL` and always-fails `MUST_NOT_CALL`.
+  - The missing-output recommendation in `_miboTrace.recommendations` is for the n8n user only and is not part of the trace payload. It means the data proxy exposed no output for a `main`-graph node; this is commonly an untaken IF/Switch/Filter branch or a node that received or returned no items. The runtime does not expose a reliable cause here, so the recommendation must not claim one. Self and sub-nodes are kept out of it.
+- **Tool calls come from the agent's `intermediateSteps`, never from wiring.** Verifying *which* tools an agent invoked is the point of agent testing, so a tool span must reflect a real invocation, not a wired connection. `extractToolCalls` reads each captured agent's `intermediateSteps` output and emits one child span per call: `gen_ai.tool.name` = `action.tool`, `gen_ai.tool.call.arguments` = the args, `parent_span_id` = the agent span. The consumer evaluates these via `expected_tool_calls`. Args follow a fallback chain for n8n issue #23501 where `toolInput` can be empty: `toolInput` → `messageLog[].tool_calls[].args` → omitted. This needs **"Return Intermediate Steps" enabled on the AI Agent node**. `agentsMissingIntermediateSteps` checks each tool-wired agent's `options.returnIntermediateSteps` param and, when off, adds an `enable_intermediate_steps` recommendation naming those agents. Key distinction: an agent that simply called no tool this run is **not** a recommendation — only one whose flag is off, since that's the config gap that blinds every tool assertion. Never infer "off" from an empty `intermediateSteps`. And never mark a node as a tool from its `ai_tool` wiring — that always-passes `MUST_CALL` and always-fails `MUST_NOT_CALL`.
 - **Parentage nests sub-nodes under their consumer.** `buildParentMap` resolves `main` edges as source→target, so the target's parent is the source. It **inverts AI sub-node edges**: the sub-node records the node it feeds as its parent, so the model/memory spans nest under their agent via `parent_span_id`. This never overwrites the agent's own `main`-chain parent. (Tool-call spans are parented separately in `buildCanonicalTracePayload`.)
+- **HTTP status is inferred only from an executed static response path.** When the Mibo node is downstream of `Respond to Webhook` and its ancestor webhook uses `responseMode: responseNode`, emit the configured numeric response code on the root span as `http.response.status_code`. Missing configuration means n8n's default 200. Dynamic expressions and response nodes outside the Mibo node's ancestor path are not observable and must not be guessed.
 
 ## Payload size
 
-- The API hard limit is 10 MB (`MAX_PAYLOAD_SIZE_BYTES` in `constants.ts`). The node emits a warning in `_miboTrace` when the payload passes 80% of that.
+- The API hard limit is 10 MB (`MAX_PAYLOAD_SIZE_BYTES` in `constants.ts`). The node adds a `payload_size` entry to `_miboTrace.recommendations` when the payload passes 80% of that.
 - All requests go as plain JSON — **no gzip / Content-Encoding / Content-Type negotiation**. Don't reintroduce client-side compression: importing `node:zlib` (or any other Node built-in beyond what's already in use) is blocked by `@n8n/community-nodes/no-restricted-imports` and disqualifies the package from Verified status. See `agents/n8n-guidelines.md`.
 
 ## Error surface

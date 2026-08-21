@@ -7,12 +7,18 @@ import type {
   JsonObject,
 } from 'n8n-workflow';
 import { NodeApiError, NodeConnectionTypes, NodeOperationError } from 'n8n-workflow';
-import { buildCanonicalTracePayload, buildMetadata, extractToolCalls } from './builders';
+import {
+  buildCanonicalTracePayload,
+  buildMetadata,
+  extractToolCalls,
+  resolveHttpResponseStatus,
+} from './builders';
 import {
   AUTO_EXCLUDED_NODE_TYPES,
   DEFAULT_SERVER_URL,
   DEFAULT_TIMEOUT_SECONDS,
   DOCS_URL,
+  MIBO_APP_URL,
 } from './constants';
 import {
   calculatePayloadSize,
@@ -77,13 +83,13 @@ export class MiboTesting implements INodeType {
         placeholder: 'e.g. 550e8400-e29b-41d4-a716-446655440000',
       },
       {
-        displayName: 'Request ID',
+        displayName: 'Request ID Override',
         name: 'requestId',
         type: 'string',
         default: '',
         description:
-          'Override the x-request-ID used to correlate this trace. By default the node uses the x-request-ID from incoming webhook headers, then falls back to the n8n execution ID.',
-        placeholder: '={{ $("Webhook").item.json.headers["x-request-ID"] }}',
+          'Optionally override the x-request-ID used to correlate this trace. By default the node finds x-request-ID in incoming webhook headers, then falls back to the n8n execution ID.',
+        placeholder: 'e.g. custom-request-ID',
       },
       {
         displayName: 'Include Metadata',
@@ -92,6 +98,13 @@ export class MiboTesting implements INodeType {
         noDataExpression: true,
         default: false,
         description: 'Whether to include additional metadata with the trace',
+      },
+      {
+        displayName:
+          'Captured trace data is sent to the hosted Mibo Testing service for storage and evaluation.',
+        name: 'hostedDataProcessingNotice',
+        type: 'notice',
+        default: '',
       },
       {
         displayName: 'Automatic Sensitive Data Protection',
@@ -198,6 +211,14 @@ export class MiboTesting implements INodeType {
         default: {},
         options: [
           {
+            displayName: 'Include Input Data in Output',
+            name: 'includeInputData',
+            type: 'boolean',
+            default: false,
+            description:
+              'Whether to include the original input fields alongside the Mibo trace summary',
+          },
+          {
             displayName: 'Timeout (Seconds)',
             name: 'timeout',
             type: 'number',
@@ -212,6 +233,7 @@ export class MiboTesting implements INodeType {
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
     const items = this.getInputData();
     const returnData: INodeExecutionData[] = [];
+    const aggregatePairedItems = items.map((_, item) => ({ item }));
 
     const credentials = await this.getCredentials('miboTestingApi');
     const workflowData = this.getWorkflow();
@@ -231,6 +253,7 @@ export class MiboTesting implements INodeType {
     const manualRedaction = this.getNodeParameter('manualRedaction', 0, false) as boolean;
     const redactionFields = this.getNodeParameter('redactionFields', 0, {}) as IDataObject;
     const options = this.getNodeParameter('options', 0, {}) as NodeOptions;
+    const includeInputData = Boolean(options.includeInputData);
 
     let redactionPolicy;
     try {
@@ -341,6 +364,11 @@ export class MiboTesting implements INodeType {
 
     const manualRequestId = this.getNodeParameter('requestId', 0, '') as string;
     const requestId = manualRequestId || extractedRequestId || this.getExecutionId() || undefined;
+    const requestIdSource = manualRequestId
+      ? 'manualOverride'
+      : extractedRequestId
+        ? 'x-request-id'
+        : 'executionId';
 
     const {
       sources: redactedSources,
@@ -350,6 +378,7 @@ export class MiboTesting implements INodeType {
 
     const parentMap = buildParentMap(connections);
     const toolCalls = extractToolCalls(redactedSources);
+    const httpResponseStatus = resolveHttpResponseStatus(workflowNodes, parentMap, selfNodeName);
 
     const tracePayload = buildCanonicalTracePayload(
       redactedSources,
@@ -358,6 +387,7 @@ export class MiboTesting implements INodeType {
       platformId,
       parentMap,
       toolCalls,
+      httpResponseStatus,
     );
 
     // Agents that have tools wired but won't expose them (returnIntermediateSteps off).
@@ -381,58 +411,103 @@ export class MiboTesting implements INodeType {
         requestId,
       );
 
-      for (let i = 0; i < items.length; i++) {
-        const traceInfo: IDataObject = {
-          sent: true,
-          traceId: response?.data?.id || 'unknown',
-          platformId: platformId || 'resolved-from-api-key',
-          requestId: requestId || null,
-          timestamp,
-          spansSent: redactedSources.filter((s) => s.items.length > 0).length,
+      const recommendations: IDataObject[] = [];
+
+      if (nodesNotExecuted.length > 0) {
+        recommendations.push({
+          code: 'nodes_not_executed',
+          message:
+            'Review these nodes if you expected them to run. n8n exposed no output for this execution.',
+          nodes: nodesNotExecuted,
+        });
+      }
+
+      if (agentsNeedingSteps.length > 0) {
+        recommendations.push({
+          code: 'enable_intermediate_steps',
+          message:
+            "Turn on 'Return Intermediate Steps' on these agent nodes so Mibo can capture tool calls.",
+          nodes: agentsNeedingSteps,
+        });
+      }
+
+      if (payloadWarning) {
+        recommendations.push({
+          code: 'payload_size',
+          message: payloadWarning,
+        });
+      }
+
+      const traceInfo: IDataObject = {
+        sent: true,
+        traceId: response?.data?.id || 'unknown',
+        platformId: platformId || 'resolved-from-api-key',
+        requestId: requestId || null,
+        requestIdSource,
+        timestamp,
+        trace: {
+          spansSent: tracePayload.spans.length,
           toolCallsSent: toolCalls.length,
           payloadSize: payloadSizeFormatted,
-          redaction: summary as unknown as IDataObject,
-        };
+          nodes: redactedSources.map((source) => ({
+            name: source.nodeName,
+            status: source.status,
+            itemsCaptured: source.items.length,
+          })),
+        },
+        redaction: summary as unknown as IDataObject,
+        recommendations,
+        miboUrl: MIBO_APP_URL,
+      };
 
-        if (payloadWarning) {
-          traceInfo.payloadWarning = payloadWarning;
+      if (includeInputData) {
+        for (let i = 0; i < items.length; i++) {
+          returnData.push({
+            json: {
+              ...items[i].json,
+              _miboTrace: traceInfo,
+            },
+            pairedItem: { item: i },
+          });
         }
-
-        if (nodesNotExecuted.length > 0) {
-          traceInfo.warning = `Some nodes did not execute in this workflow branch: ${nodesNotExecuted.join(', ')}`;
-          traceInfo.nodesNotExecuted = nodesNotExecuted;
-        }
-
-        if (agentsNeedingSteps.length > 0) {
-          traceInfo.toolCallsWarning = `Turn on 'Return Intermediate Steps' on these agent nodes so tool-call assertions can see which tools ran: ${agentsNeedingSteps.join(', ')}.`;
-        }
-
+      } else {
         returnData.push({
           json: {
-            ...items[i].json,
             _miboTrace: traceInfo,
           },
-          pairedItem: { item: i },
+          pairedItem: aggregatePairedItems,
         });
       }
     } catch (error: unknown) {
       const errorMessage = parseErrorResponse(error);
 
       if (this.continueOnFail()) {
-        for (let i = 0; i < items.length; i++) {
+        const traceInfo: IDataObject = {
+          sent: false,
+          error: errorMessage,
+          platformId: platformId || 'unknown',
+          requestId: requestId || null,
+          requestIdSource,
+          timestamp,
+          payloadSize: payloadSizeFormatted,
+        };
+
+        if (includeInputData) {
+          for (let i = 0; i < items.length; i++) {
+            returnData.push({
+              json: {
+                ...items[i].json,
+                _miboTrace: traceInfo,
+              },
+              pairedItem: { item: i },
+            });
+          }
+        } else {
           returnData.push({
             json: {
-              ...items[i].json,
-              _miboTrace: {
-                sent: false,
-                error: errorMessage,
-                platformId: platformId || 'unknown',
-                requestId: requestId || null,
-                timestamp,
-                payloadSize: payloadSizeFormatted,
-              },
+              _miboTrace: traceInfo,
             },
-            pairedItem: { item: i },
+            pairedItem: aggregatePairedItems,
           });
         }
       } else {

@@ -46,6 +46,7 @@ export interface FetchedWorkflow {
 }
 
 export interface NodeOptions {
+  includeInputData?: boolean;
   timeout?: number;
 }
 

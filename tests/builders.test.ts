@@ -7,6 +7,7 @@ import {
   buildCanonicalTracePayload,
   buildMetadata,
   extractToolCalls,
+  resolveHttpResponseStatus,
 } from '../nodes/MiboTesting/builders';
 import type { SpanSource } from '../nodes/MiboTesting/types';
 
@@ -249,6 +250,75 @@ describe('buildCanonicalTracePayload', () => {
     ];
     const span = buildCanonicalTracePayload(odd, 'wf-1', {}, '', {}).spans[0];
     expect(span.name).toBe('My Custom AI Agent (v2)');
+  });
+
+  it('emits an inferred HTTP response status on the root span', () => {
+    const payload = buildCanonicalTracePayload(sources, 'wf-1', {}, '', parentMap, [], 201);
+    expect(payload.spans[0].attributes['http.response.status_code']).toBe(201);
+    expect(payload.spans[1].attributes['http.response.status_code']).toBeUndefined();
+  });
+});
+
+describe('resolveHttpResponseStatus', () => {
+  const parentMap = {
+    Normalize: 'Webhook',
+    Respond: 'Normalize',
+    Mibo: 'Respond',
+  };
+
+  it('returns the default 200 for an executed Respond to Webhook node', () => {
+    const workflowNodes = [
+      {
+        name: 'Webhook',
+        type: 'n8n-nodes-base.webhook',
+        parameters: { responseMode: 'responseNode' },
+      },
+      { name: 'Normalize', type: 'n8n-nodes-base.code' },
+      {
+        name: 'Respond',
+        type: 'n8n-nodes-base.respondToWebhook',
+        parameters: { options: {} },
+      },
+      { name: 'Mibo', type: 'CUSTOM.miboTesting' },
+    ];
+
+    expect(resolveHttpResponseStatus(workflowNodes, parentMap, 'Mibo')).toBe(200);
+  });
+
+  it('returns a configured static response code', () => {
+    const workflowNodes = [
+      {
+        name: 'Webhook',
+        type: 'n8n-nodes-base.webhook',
+        parameters: { responseMode: 'responseNode' },
+      },
+      {
+        name: 'Respond',
+        type: 'n8n-nodes-base.respondToWebhook',
+        parameters: { options: { responseCode: 202 } },
+      },
+      { name: 'Mibo', type: 'CUSTOM.miboTesting' },
+    ];
+
+    expect(resolveHttpResponseStatus(workflowNodes, parentMap, 'Mibo')).toBe(202);
+  });
+
+  it('omits a dynamic response code that cannot be observed reliably', () => {
+    const workflowNodes = [
+      {
+        name: 'Webhook',
+        type: 'n8n-nodes-base.webhook',
+        parameters: { responseMode: 'responseNode' },
+      },
+      {
+        name: 'Respond',
+        type: 'n8n-nodes-base.respondToWebhook',
+        parameters: { options: { responseCode: '={{ $json.statusCode }}' } },
+      },
+      { name: 'Mibo', type: 'CUSTOM.miboTesting' },
+    ];
+
+    expect(resolveHttpResponseStatus(workflowNodes, parentMap, 'Mibo')).toBeUndefined();
   });
 });
 

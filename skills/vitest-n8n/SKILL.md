@@ -1,6 +1,6 @@
 ---
 name: vitest-n8n
-description: Author or extend Vitest tests for the Mibo Testing n8n node — mock `IExecuteFunctions` with `createMockExecuteFunctions(overrides)`, stub `helpers.httpRequest`, assert the passthrough invariant. Use when the user mentions adding/changing a test, writing coverage, or any work under `tests/`.
+description: Author or extend Vitest tests for the Mibo Testing n8n node — mock `IExecuteFunctions` with `createMockExecuteFunctions(overrides)`, stub `helpers.httpRequest`, and assert summary and passthrough output modes. Use when the user mentions adding/changing a test, writing coverage, or any work under `tests/`.
 metadata:
   version: "1.0.0"
 ---
@@ -48,8 +48,8 @@ Override only the fields the test needs. Reset `vi` state between tests if mocks
    - Oversized payload (over `MAX_PAYLOAD_SIZE_BYTES`)
    - Missing required parameter / credential field
    - Network timeout
-3. **Passthrough invariant** (`node.test.ts`): input fields survive unchanged; `_miboTrace` is appended.
-4. **Payload size warning** (`mibo-client.test.ts`): payload above 80% of `MAX_PAYLOAD_SIZE_BYTES` surfaces a warning in `_miboTrace`; the request body is always plain JSON.
+3. **Output modes** (`node.test.ts`): the default returns one summary; opt-in passthrough preserves every input field and appends `_miboTrace`.
+4. **Payload size recommendation** (`node.test.ts` + `mibo-client.test.ts`): payload above 80% of `MAX_PAYLOAD_SIZE_BYTES` adds a `payload_size` entry to `_miboTrace.recommendations`; the request body is always plain JSON.
 5. **`continueOnFail()`**: when enabled, errors emit an item with `error` instead of throwing.
 6. **`x-request-id` propagation** from webhook headers when not explicitly set.
 

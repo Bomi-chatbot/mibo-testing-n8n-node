@@ -7,8 +7,9 @@ n8n community node for **Mibo Testing** - a platform for semantic and procedural
 - **Canonical OTEL-shaped trace**: emits one span per executed workflow node in the Mibo Custom API shape (`{spans: [...]}`), the same shape the dashboard renders. Works on **n8n Cloud and self-hosted** — no OTel SDK, no exporter, no host-level config.
 - **Automatic workflow capture**: discovers every executed node via the n8n API (when credentials carry an n8n API key) or via an upstream `Get Workflow` node. Auto-utility nodes (`stickyNote`, `noOp`, `wait`, …) are excluded.
 - **Parent linking**: `parent_span_id` follows the n8n connection graph so traces render as the workflow structure.
-- **Request-id correlation**: sets `x-request-id` from the manual override, then from incoming webhook headers, falling back to the n8n execution id.
-- **Passthrough**: input items pass through unchanged; only a `_miboTrace` summary is appended.
+- **HTTP status capture**: when the Mibo node runs downstream of a single `Respond to Webhook` path, its static response code is emitted on the root span. The n8n default is captured as 200; dynamic expressions are omitted because their runtime value is not exposed to downstream nodes.
+- **Request-id correlation**: automatically finds `x-request-id` in incoming webhook headers, falling back to the n8n execution ID. An optional manual override remains available.
+- **Focused output**: returns one structured `_miboTrace` summary by default. Input passthrough is available as an option.
 
 > New here? Start with the [Quick Start Guide](./docs/quick-start.md) — 30-second setup plus troubleshooting for the most common errors (payload too large, wrong node names, API key issues).
 
@@ -89,13 +90,13 @@ If neither source is available, the node errors with a link to <https://docs.mib
 | Parameter | Description |
 |-----------|-------------|
 | **Agent ID** | Your agent UUID in Mibo Testing. Leave empty if the API key is already scoped to a single agent. |
-| **Request ID** | Override the `x-request-id` used to correlate this trace. Defaults to the incoming webhook header, falling back to the n8n execution id. |
+| **Request ID Override** | Optional override for the `x-request-id` used to correlate this trace. Leave empty to detect it from incoming webhook headers, falling back to the n8n execution ID. |
 | **Include Metadata** | Add environment, version, and custom fields to the trace metadata. |
 | **Automatic Sensitive Data Protection** | Enabled by default. Replaces common secret-bearing keys and safe name patterns such as `databasePassword`, `myApiKey`, `aiKey`, `openAiKey`, authorization headers, cookies, access tokens, refresh tokens, and private keys with `[REDACTED]` before transmission. Token-usage metrics such as `promptTokens` and `totalTokens` are preserved. |
 | **Custom Sensitive Data Protection** | Disabled by default. Enables custom field paths for customer or identity data. |
 | **Fields to Protect** | Repeatable dot-separated paths shown when Custom Sensitive Data Protection is enabled, such as `customer.email` or `customers.*.email`. Arrays are traversed transparently. |
 
-Sensitive data protection is applied locally to cloned node parameters, outputs, tool arguments, and user-provided metadata before the canonical trace is serialized or sent. Input items, node names, workflow identifiers, correlation headers, and the returned `_miboTrace` summary are not protected or mutated. Automatic and custom rules are independent; enabling both applies their union. Invalid paths stop the transmission instead of falling back to an unprotected payload.
+Sensitive data protection is applied locally to cloned node parameters, outputs, tool arguments, and user-provided metadata before the canonical trace is serialized or sent. Node names, workflow identifiers, correlation headers, and the returned `_miboTrace` summary are not protected or mutated. When input passthrough is enabled, original input items are returned unchanged and are not covered by output redaction. Automatic and custom rules are independent; enabling both applies their union. Invalid paths stop the transmission instead of falling back to an unprotected payload.
 
 Custom paths use a deep search within each captured value; they are not a pick for one field. A path such as `customer.email` protects every occurrence of that sequence at any depth, including `metadata.customer.email`. To protect only a specific branch, include it in the path, such as `metadata.customer.email`. A single field name such as `email` matches every `email` field at any depth, while `customers.*.email` matches `email` inside every element of `customers`.
 
@@ -109,26 +110,43 @@ For passive evaluation, run the real n8n workflow and let Mibo evaluate assertio
 
 | Option | Default | Description |
 |--------|---------|-------------|
+| Include Input Data in Output | Off | Include every original input item alongside the trace summary. |
 | Timeout (Seconds) | 30 | Maximum time to wait for the Mibo Testing server to respond. |
 
 ## Output
 
-The node passes through all input data unchanged, adding a `_miboTrace` object to each item:
+The node returns one structured summary by default, without repeating the input data:
 
 ```json
 {
-  "original_field": "preserved",
   "_miboTrace": {
     "sent": true,
     "traceId": "abc-123",
     "platformId": "550e8400-...",
     "requestId": "req-456",
+    "requestIdSource": "x-request-id",
     "timestamp": "2026-03-08T10:30:00.000Z",
-    "spansSent": 3,
-    "payloadSize": "12.5 KB"
+    "trace": {
+      "spansSent": 3,
+      "toolCallsSent": 0,
+      "payloadSize": "12.5 KB",
+      "nodes": [
+        { "name": "Webhook", "status": "success", "itemsCaptured": 1 },
+        { "name": "AI Agent", "status": "success", "itemsCaptured": 1 }
+      ]
+    },
+    "redaction": {
+      "automaticEnabled": true,
+      "manualEnabled": false,
+      "valuesRedacted": 1
+    },
+    "recommendations": [],
+    "miboUrl": "https://app.mibo-ai.com"
   }
 }
 ```
+
+Turn on **Include Input Data in Output** to append the same `_miboTrace` summary to every original input item.
 
 ## Trace shape
 
@@ -144,7 +162,8 @@ The node POSTs to `POST /public/traces` using the Mibo **Custom API** shape:
       "attributes": {
         "n8n.node.type": "n8n-nodes-base.webhook",
         "n8n.node.status": "success",
-        "n8n.node.output": "{\"body\":\"hi\"}"
+        "n8n.node.output": "{\"body\":\"hi\"}",
+        "http.response.status_code": 200
       }
     },
     {

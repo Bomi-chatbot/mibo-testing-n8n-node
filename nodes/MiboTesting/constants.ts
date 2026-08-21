@@ -1,4 +1,5 @@
 export const DEFAULT_SERVER_URL = 'https://api.mibo-ai.com';
+export const MIBO_APP_URL = 'https://app.mibo-ai.com';
 export const DOCS_URL = 'https://docs.mibo-ai.com/n8n-node/setup/';
 export const DEFAULT_TIMEOUT_SECONDS = 30;
 export const UUID_REGEX =
