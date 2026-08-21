@@ -134,7 +134,7 @@ The node POSTs to `POST /public/traces` using the Mibo **Custom API** shape:
 
 ### Prerequisites
 
-- Node.js ^20.19.0 or >= 22.12.0
+- Node.js 22.22.0 (managed by mise for local n8n development)
 - pnpm >= 10
 - Docker (for the default dev flow)
 
@@ -146,6 +146,10 @@ cd mibo-testing-n8n-node
 pnpm install
 ```
 
+This repository pins Node.js 22.22.0 and pnpm 10.28.2 in `mise.toml`, matching the
+local n8n runtime. Install mise, then run `mise install` and open a new shell (or activate
+mise in the current shell) before running the commands below.
+
 ### Development
 
 The default dev flow runs n8n in Docker — no global installs needed.
@@ -156,11 +160,20 @@ pnpm run dev
 
 Builds the node, starts n8n in Docker, and watches for source changes. Open http://localhost:5678 — reload the workflow in n8n to pick up rebuilt code.
 
-If you prefer running n8n directly on your machine (requires `n8n` installed globally):
+For a direct local runtime without a global n8n installation, install the latest n8n release
+inside the ignored `.local/n8n/runtime/` directory:
 
 ```bash
+pnpm run dev:local:install
 pnpm run dev:local
 ```
+
+The local profile is isolated in `.local/n8n/profile/` and contains only local n8n state.
+The development script prints the resolved n8n version, loads this package through
+`N8N_CUSTOM_EXTENSIONS`, rebuilds the node on source changes, and restarts n8n after
+successful builds. Failed builds leave the current n8n process running. If installation is
+missing, rerun `pnpm run dev:local:install`; the installer configures the required local
+native build automatically. Stop the process with `Ctrl+C`.
 
 ---
 
