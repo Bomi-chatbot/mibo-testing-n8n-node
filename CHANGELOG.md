@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.0.0](https://github.com/mibo-ai/mibo-testing-n8n-node/compare/n8n-nodes-mibo-testing-v1.0.3...n8n-nodes-mibo-testing-v2.0.0) (2026-08-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* The node now returns a single _miboTrace summary by default. Enable 'Include Input Data in Output' to preserve the previous passthrough output.
+
+### Features
+
+* add repository-local n8n development environment ([8b7f5aa](https://github.com/mibo-ai/mibo-testing-n8n-node/commit/8b7f5aa159ea1820bc750b6fd3ce7b10dfa0dfa9))
+* add sensitive data protection controls ([5b81c47](https://github.com/mibo-ai/mibo-testing-n8n-node/commit/5b81c4759b0b3f30b34c3c924420db1d3c021670))
+* document hosted trace capture and protection guidance ([5880ddc](https://github.com/mibo-ai/mibo-testing-n8n-node/commit/5880ddc29ff102edd337c18f6da95a5e174616b8))
+* recognize focused summary output ([bd932e3](https://github.com/mibo-ai/mibo-testing-n8n-node/commit/bd932e3072feb68bacc950b5820ccf3a14abf1a3))
+
 ## [1.0.3](https://github.com/mibo-ai/mibo-testing-n8n-node/compare/n8n-nodes-mibo-testing-v1.0.2...n8n-nodes-mibo-testing-v1.0.3) (2026-06-21)
 
 
